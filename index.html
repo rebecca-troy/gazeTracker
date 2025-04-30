@@ -1,55 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Simple Gaze Test</title>
-  <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+  <meta charset="UTF-8">
+  <title>Gaze Test</title>
+  <!-- Preconnect to speed up API load -->
+  <link rel="preconnect" href="https://api.gazerecorder.com">
   <style>
     body {
       font-family: Arial, sans-serif;
+      background-color: #f0f8ff;
       text-align: center;
       padding: 20px;
-      background-color: #f0f0f0;
     }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
+    #debug {
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background: white;
+      text-align: left;
     }
   </style>
 </head>
 <body>
-  <h2>Simple Gaze Tracker</h2>
-  <p id="status">Status: Click start to begin</p>
-  <button id="startBtn">Start Eye Tracking</button>
+  <h1>Gaze Tracking Debug</h1>
+  <button id="startBtn">Initialize Eye Tracking</button>
+  <div id="status">Status: Ready</div>
+  
+  <!-- Debug info container -->
+  <div id="debug">
+    <h3>Debug Information:</h3>
+    <div id="loadStatus">API: Not loaded yet</div>
+    <div id="httpsStatus">HTTPS: Checking...</div>
+    <div id="cameraStatus">Camera: Not accessed</div>
+  </div>
 
+  <!-- Load API with fallback -->
   <script>
-    document.getElementById('startBtn').addEventListener('click', function() {
-      document.getElementById("status").textContent = "Status: Initializing...";
-      
+    // 1. First verify basic page functionality
+    document.getElementById('httpsStatus').textContent = 
+      'HTTPS: ' + (window.location.protocol === 'https:' ? 'Yes' : 'NO - REQUIRED');
+    
+    // 2. Check if API loaded properly
+    const apiScript = document.createElement('script');
+    apiScript.src = 'https://api.gazerecorder.com/GazeCloudAPI.js';
+    apiScript.onload = () => {
+      document.getElementById('loadStatus').textContent = 'API: Loaded successfully';
+      console.log('GazeCloudAPI loaded:', typeof GazeCloudAPI);
+    };
+    apiScript.onerror = () => {
+      document.getElementById('loadStatus').textContent = 'API: FAILED to load';
+      console.error('Failed to load GazeCloudAPI');
+    };
+    document.head.appendChild(apiScript);
+
+    // 3. Initialize with checks
+    document.getElementById('startBtn').addEventListener('click', () => {
       try {
+        if (typeof GazeCloudAPI === 'undefined') {
+          throw new Error('API not loaded');
+        }
+        
+        document.getElementById('status').textContent = 'Status: Starting...';
+        
         GazeCloudAPI.StartEyeTracking();
         
-        GazeCloudAPI.OnCalibrationComplete = function() {
-          document.getElementById("status").textContent = "Status: Calibrated!";
+        GazeCloudAPI.OnCalibrationComplete = () => {
+          document.getElementById('status').textContent = 'Status: Calibrated!';
+          document.getElementById('cameraStatus').textContent = 'Camera: Active';
         };
         
-        GazeCloudAPI.OnResult = function(GazeData) {
-          // Optional: Do something with gaze data
+        GazeCloudAPI.OnCamDenied = () => {
+          document.getElementById('status').textContent = 'Error: Camera denied';
+          document.getElementById('cameraStatus').textContent = 'Camera: DENIED';
         };
         
-        GazeCloudAPI.OnError = function(msg) {
-          document.getElementById("status").textContent = "Error: " + msg;
-          console.error("GazeCloud Error:", msg);
+        GazeCloudAPI.OnError = (err) => {
+          document.getElementById('status').textContent = 'Error: ' + err;
+          console.error('GazeCloud Error:', err);
         };
         
-        GazeCloudAPI.OnCamDenied = function() {
-          document.getElementById("status").textContent = "Error: Camera access denied";
-          console.error("Camera access was denied");
-        };
       } catch (error) {
-        document.getElementById("status").textContent = "Error: " + error.message;
-        console.error("Initialization error:", error);
+        document.getElementById('status').textContent = 'Crash: ' + error.message;
+        console.error('Initialization error:', error);
       }
     });
   </script>
