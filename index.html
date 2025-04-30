@@ -2,87 +2,187 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gaze Test</title>
-  <!-- Preconnect to speed up API load -->
-  <link rel="preconnect" href="https://api.gazerecorder.com">
+  <title>Gaze Tracking Experiment</title>
+  <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #f0f8ff;
-      text-align: center;
+      max-width: 800px;
+      margin: 0 auto;
       padding: 20px;
+      text-align: center;
     }
-    #debug {
+    #image-container {
+      margin: 20px auto;
+      position: relative;
+      border: 2px solid #333;
+    }
+    #target-image {
+      max-width: 100%;
+      display: block;
+    }
+    #gaze-pointer {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background-color: red;
+      border-radius: 50%;
+      transform: translate(-10px, -10px);
+      pointer-events: none;
+      display: none;
+    }
+    #data-display {
       margin-top: 20px;
-      padding: 10px;
-      border: 1px solid #ccc;
-      background: white;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 5px;
       text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .hidden {
+      display: none;
     }
   </style>
 </head>
 <body>
-  <h1>Gaze Tracking Debug</h1>
-  <button id="startBtn">Initialize Eye Tracking</button>
-  <div id="status">Status: Ready</div>
+  <h1>Eye Tracking Experiment</h1>
   
-  <!-- Debug info container -->
-  <div id="debug">
-    <h3>Debug Information:</h3>
-    <div id="loadStatus">API: Not loaded yet</div>
-    <div id="httpsStatus">HTTPS: Checking...</div>
-    <div id="cameraStatus">Camera: Not accessed</div>
+  <div id="setup-phase">
+    <p>Click start to begin eye tracking calibration</p>
+    <button id="startBtn">Start Eye Tracking</button>
   </div>
 
-  <!-- Load API with fallback -->
-  <script>
-    // 1. First verify basic page functionality
-    document.getElementById('httpsStatus').textContent = 
-      'HTTPS: ' + (window.location.protocol === 'https:' ? 'Yes' : 'NO - REQUIRED');
+  <div id="tracking-phase" class="hidden">
+    <h2>Look at the image below</h2>
+    <div id="image-container">
+      <img id="target-image" src="https://via.placeholder.com/600x400" alt="Test image">
+      <div id="gaze-pointer"></div>
+    </div>
     
-    // 2. Check if API loaded properly
-    const apiScript = document.createElement('script');
-    apiScript.src = 'https://api.gazerecorder.com/GazeCloudAPI.js';
-    apiScript.onload = () => {
-      document.getElementById('loadStatus').textContent = 'API: Loaded successfully';
-      console.log('GazeCloudAPI loaded:', typeof GazeCloudAPI);
-    };
-    apiScript.onerror = () => {
-      document.getElementById('loadStatus').textContent = 'API: FAILED to load';
-      console.error('Failed to load GazeCloudAPI');
-    };
-    document.head.appendChild(apiScript);
+    <div>
+      <button id="nextImageBtn">Next Image</button>
+      <button id="exportDataBtn">Export Data</button>
+    </div>
+    
+    <div id="data-display">
+      <h3>Gaze Data:</h3>
+      <div id="gaze-data"></div>
+    </div>
+  </div>
 
-    // 3. Initialize with checks
-    document.getElementById('startBtn').addEventListener('click', () => {
-      try {
-        if (typeof GazeCloudAPI === 'undefined') {
-          throw new Error('API not loaded');
-        }
+  <script>
+    // Configuration
+    const testImages = [
+      'https://via.placeholder.com/600x400/FF0000/FFFFFF?text=Image+1',
+      'https://via.placeholder.com/600x400/00FF00/FFFFFF?text=Image+2',
+      'https://via.placeholder.com/600x400/0000FF/FFFFFF?text=Image+3'
+    ];
+    
+    let currentImageIndex = 0;
+    let gazeData = [];
+    let trackingActive = false;
+
+    // DOM Elements
+    const setupPhase = document.getElementById('setup-phase');
+    const trackingPhase = document.getElementById('tracking-phase');
+    const targetImage = document.getElementById('target-image');
+    const gazePointer = document.getElementById('gaze-pointer');
+    const gazeDataDisplay = document.getElementById('gaze-data');
+    const startBtn = document.getElementById('startBtn');
+    const nextImageBtn = document.getElementById('nextImageBtn');
+    const exportDataBtn = document.getElementById('exportDataBtn');
+
+    // Initialize with first image
+    targetImage.src = testImages[currentImageIndex];
+
+    // Start tracking
+    startBtn.addEventListener('click', () => {
+      startBtn.disabled = true;
+      startBtn.textContent = 'Calibrating...';
+      
+      GazeCloudAPI.StartEyeTracking();
+      
+      GazeCloudAPI.OnCalibrationComplete = () => {
+        setupPhase.classList.add('hidden');
+        trackingPhase.classList.remove('hidden');
+        trackingActive = true;
+        startTracking();
+      };
+      
+      GazeCloudAPI.OnError = (msg) => {
+        startBtn.textContent = 'Error: ' + msg;
+      };
+    });
+
+    // Track gaze position
+    function startTracking() {
+      GazeCloudAPI.OnResult = (GazeData) => {
+        if (!trackingActive) return;
         
-        document.getElementById('status').textContent = 'Status: Starting...';
+        // Show gaze pointer
+        gazePointer.style.display = 'block';
+        gazePointer.style.left = GazeData.docX + 'px';
+        gazePointer.style.top = GazeData.docY + 'px';
         
-        GazeCloudAPI.StartEyeTracking();
-        
-        GazeCloudAPI.OnCalibrationComplete = () => {
-          document.getElementById('status').textContent = 'Status: Calibrated!';
-          document.getElementById('cameraStatus').textContent = 'Camera: Active';
+        // Record data
+        const timestamp = new Date().toISOString();
+        const image = testImages[currentImageIndex];
+        const record = {
+          timestamp,
+          image,
+          gazeX: GazeData.docX,
+          gazeY: GazeData.docY,
+          isFixation: GazeData.fixation
         };
         
-        GazeCloudAPI.OnCamDenied = () => {
-          document.getElementById('status').textContent = 'Error: Camera denied';
-          document.getElementById('cameraStatus').textContent = 'Camera: DENIED';
-        };
-        
-        GazeCloudAPI.OnError = (err) => {
-          document.getElementById('status').textContent = 'Error: ' + err;
-          console.error('GazeCloud Error:', err);
-        };
-        
-      } catch (error) {
-        document.getElementById('status').textContent = 'Crash: ' + error.message;
-        console.error('Initialization error:', error);
-      }
+        gazeData.push(record);
+        updateDataDisplay();
+      };
+    }
+
+    // Update the displayed data
+    function updateDataDisplay() {
+      const lastFive = gazeData.slice(-5).reverse();
+      gazeDataDisplay.innerHTML = lastFive.map(entry => 
+        `<div>
+          <strong>${new Date(entry.timestamp).toLocaleTimeString()}</strong><br>
+          Image: ${entry.image.split('/')[4]}<br>
+          Position: (${Math.round(entry.gazeX)}, ${Math.round(entry.gazeY)})<br>
+          ${entry.isFixation ? 'Fixated' : 'Moving'}
+        </div><hr>`
+      ).join('');
+    }
+
+    // Change to next image
+    nextImageBtn.addEventListener('click', () => {
+      currentImageIndex = (currentImageIndex + 1) % testImages.length;
+      targetImage.src = testImages[currentImageIndex];
+      gazeData.push({
+        timestamp: new Date().toISOString(),
+        event: 'Image changed to: ' + testImages[currentImageIndex]
+      });
+      updateDataDisplay();
+    });
+
+    // Export collected data
+    exportDataBtn.addEventListener('click', () => {
+      const dataStr = JSON.stringify(gazeData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gaze-data-${new Date().toISOString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     });
   </script>
 </body>
