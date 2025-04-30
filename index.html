@@ -4,24 +4,54 @@
   <meta charset="UTF-8" />
   <title>Simple Gaze Test</title>
   <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background-color: #f0f0f0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <h2>Simple Gaze Tracker</h2>
-  <p id="status">Status: waiting</p>
+  <p id="status">Status: Click start to begin</p>
+  <button id="startBtn">Start Eye Tracking</button>
 
   <script>
-    setTimeout(() => {
-      GazeCloudAPI.StartEyeTracking();
-      GazeCloudAPI.OnCalibrationComplete = () => {
-        document.getElementById("status").textContent = "Status: Calibrated!";
-      };
-      GazeCloudAPI.OnError = (msg) => {
-        document.getElementById("status").textContent = "Error: " + msg;
-      };
-      GazeCloudAPI.OnCamDenied = () => {
-        document.getElementById("status").textContent = "Camera denied";
-      };
-    }, 1000);
+    document.getElementById('startBtn').addEventListener('click', function() {
+      document.getElementById("status").textContent = "Status: Initializing...";
+      
+      try {
+        GazeCloudAPI.StartEyeTracking();
+        
+        GazeCloudAPI.OnCalibrationComplete = function() {
+          document.getElementById("status").textContent = "Status: Calibrated!";
+        };
+        
+        GazeCloudAPI.OnResult = function(GazeData) {
+          // Optional: Do something with gaze data
+        };
+        
+        GazeCloudAPI.OnError = function(msg) {
+          document.getElementById("status").textContent = "Error: " + msg;
+          console.error("GazeCloud Error:", msg);
+        };
+        
+        GazeCloudAPI.OnCamDenied = function() {
+          document.getElementById("status").textContent = "Error: Camera access denied";
+          console.error("Camera access was denied");
+        };
+      } catch (error) {
+        document.getElementById("status").textContent = "Error: " + error.message;
+        console.error("Initialization error:", error);
+      }
+    });
   </script>
 </body>
 </html>
