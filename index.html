@@ -1,2 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gaze Tracking Example</title>
+  <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+</head>
+<body>
+  <h1>Gaze Tracking Test</h1>
+  <button onclick="downloadCSV()">Download Gaze Data</button>
 
-<script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+  <script>
+    const gazeData = [];
+
+    window.addEventListener("load", function() {
+      GazeCloudAPI.StartEyeTracking();
+
+      GazeCloudAPI.OnResult = function(GazeData) {
+        if (GazeData.state === 0) {
+          gazeData.push({
+            x: GazeData.docX,
+            y: GazeData.docY,
+            time: GazeData.time
+          });
+        }
+      };
+
+      GazeCloudAPI.OnCalibrationComplete = function() {
+        console.log("Calibration Complete");
+      };
+
+      GazeCloudAPI.OnCamDenied = function() {
+        console.log("Camera access denied");
+      };
+
+      GazeCloudAPI.OnError = function(msg) {
+        console.log("Error: " + msg);
+      };
+
+      GazeCloudAPI.UseClickRecalibration = true;
+    });
+
+    function downloadCSV() {
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += "Time,X,Y\n";
+      gazeData.forEach(point => {
+        csvContent += `${point.time},${point.x},${point.y}\n`;
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "gaze_data.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>
