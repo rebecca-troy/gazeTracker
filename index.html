@@ -7,6 +7,7 @@
 </head>
 <body>
   <h1>Gaze Tracking Test</h1>
+  <p id="status">Status: Initializing...</p>
   <button onclick="downloadCSV()">Download Gaze Data</button>
 
   <script>
@@ -26,15 +27,15 @@
       };
 
       GazeCloudAPI.OnCalibrationComplete = function() {
-        console.log("Calibration Complete");
+        document.getElementById("status").innerText = "Status: Calibration Complete!";
       };
 
       GazeCloudAPI.OnCamDenied = function() {
-        console.log("Camera access denied");
+        document.getElementById("status").innerText = "Status: Camera access denied.";
       };
 
       GazeCloudAPI.OnError = function(msg) {
-        console.log("Error: " + msg);
+        document.getElementById("status").innerText = "Status: Error - " + msg;
       };
 
       GazeCloudAPI.UseClickRecalibration = true;
