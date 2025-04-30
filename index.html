@@ -2,188 +2,139 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gaze Tracking Experiment</title>
+  <title>Gaze Tracker</title>
   <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
   <style>
+    /* FORCE VISIBLE STYLES */
     body {
       font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      text-align: center;
+      background: white !important;
+      padding: 20px !important;
+      margin: 0 !important;
     }
-    #image-container {
-      margin: 20px auto;
-      position: relative;
-      border: 2px solid #333;
+    #tracking-ui {
+      border: 3px solid red !important;
+      padding: 20px !important;
+      margin-top: 20px !important;
     }
-    #target-image {
-      max-width: 100%;
-      display: block;
+    img {
+      max-width: 100% !important;
+      height: auto !important;
+      border: 2px solid blue !important;
+    }
+    button {
+      padding: 10px !important;
+      font-size: 16px !important;
+      margin: 10px !important;
+      background: #4CAF50 !important;
+      color: white !important;
+      border: none !important;
+    }
+    .hidden {
+      display: none !important;
     }
     #gaze-pointer {
       position: absolute;
       width: 20px;
       height: 20px;
-      background-color: red;
+      background: red;
       border-radius: 50%;
       transform: translate(-10px, -10px);
-      pointer-events: none;
-      display: none;
-    }
-    #data-display {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f5f5f5;
-      border-radius: 5px;
-      text-align: left;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 5px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .hidden {
-      display: none;
     }
   </style>
 </head>
 <body>
-  <h1>Eye Tracking Experiment</h1>
+  <!-- SIMPLE FALLBACK CONTENT -->
+  <h1>Gaze Tracking Experiment</h1>
+  <div id="status">Status: Not started</div>
+  <button id="startBtn">Start Tracking</button>
   
-  <div id="setup-phase">
-    <p>Click start to begin eye tracking calibration</p>
-    <button id="startBtn">Start Eye Tracking</button>
-  </div>
-
-  <div id="tracking-phase" class="hidden">
-    <h2>Look at the image below</h2>
-    <div id="image-container">
-      <img id="target-image" src="https://via.placeholder.com/600x400" alt="Test image">
+  <!-- TRACKING UI (Initially hidden) -->
+  <div id="tracking-ui" class="hidden">
+    <h2>Look at this image:</h2>
+    <div style="position:relative">
+      <img id="target-image" src="https://via.placeholder.com/600x400?text=Test+Image" alt="Test image">
       <div id="gaze-pointer"></div>
     </div>
-    
-    <div>
-      <button id="nextImageBtn">Next Image</button>
-      <button id="exportDataBtn">Export Data</button>
-    </div>
-    
-    <div id="data-display">
-      <h3>Gaze Data:</h3>
-      <div id="gaze-data"></div>
-    </div>
+    <button id="next-btn">Next Image</button>
+    <pre id="output">Gaze data will appear here...</pre>
   </div>
 
   <script>
-    // Configuration
-    const testImages = [
-      'https://via.placeholder.com/600x400/FF0000/FFFFFF?text=Image+1',
-      'https://via.placeholder.com/600x400/00FF00/FFFFFF?text=Image+2',
-      'https://via.placeholder.com/600x400/0000FF/FFFFFF?text=Image+3'
-    ];
-    
-    let currentImageIndex = 0;
-    let gazeData = [];
-    let trackingActive = false;
-
-    // DOM Elements
-    const setupPhase = document.getElementById('setup-phase');
-    const trackingPhase = document.getElementById('tracking-phase');
+    // DOM ELEMENTS
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const trackingUI = document.getElementById('tracking-ui');
     const targetImage = document.getElementById('target-image');
     const gazePointer = document.getElementById('gaze-pointer');
-    const gazeDataDisplay = document.getElementById('gaze-data');
-    const startBtn = document.getElementById('startBtn');
-    const nextImageBtn = document.getElementById('nextImageBtn');
-    const exportDataBtn = document.getElementById('exportDataBtn');
+    const outputEl = document.getElementById('output');
+    const nextBtn = document.getElementById('next-btn');
 
-    // Initialize with first image
-    targetImage.src = testImages[currentImageIndex];
+    // TEST IMAGES
+    const images = [
+      'https://via.placeholder.com/600x400/FF0000/FFFFFF?text=Red',
+      'https://via.placeholder.com/600x400/00FF00/FFFFFF?text=Green',
+      'https://via.placeholder.com/600x400/0000FF/FFFFFF?text=Blue'
+    ];
+    let currentImageIndex = 0;
+    let gazeData = [];
 
-    // Start tracking
+    // 1. INITIALIZE TRACKING
     startBtn.addEventListener('click', () => {
+      statusEl.textContent = "Calibrating...";
       startBtn.disabled = true;
-      startBtn.textContent = 'Calibrating...';
       
       GazeCloudAPI.StartEyeTracking();
       
       GazeCloudAPI.OnCalibrationComplete = () => {
-        setupPhase.classList.add('hidden');
-        trackingPhase.classList.remove('hidden');
-        trackingActive = true;
+        statusEl.textContent = "Calibrated! Tracking...";
+        trackingUI.classList.remove('hidden');
         startTracking();
       };
       
-      GazeCloudAPI.OnError = (msg) => {
-        startBtn.textContent = 'Error: ' + msg;
+      GazeCloudAPI.OnError = (err) => {
+        statusEl.textContent = "Error: " + err;
       };
     });
 
-    // Track gaze position
+    // 2. TRACKING FUNCTION
     function startTracking() {
       GazeCloudAPI.OnResult = (GazeData) => {
-        if (!trackingActive) return;
-        
-        // Show gaze pointer
-        gazePointer.style.display = 'block';
+        // Update gaze pointer
         gazePointer.style.left = GazeData.docX + 'px';
         gazePointer.style.top = GazeData.docY + 'px';
         
-        // Record data
-        const timestamp = new Date().toISOString();
-        const image = testImages[currentImageIndex];
-        const record = {
-          timestamp,
-          image,
-          gazeX: GazeData.docX,
-          gazeY: GazeData.docY,
-          isFixation: GazeData.fixation
-        };
+        // Store data
+        gazeData.push({
+          timestamp: new Date().toISOString(),
+          x: GazeData.docX,
+          y: GazeData.docY,
+          image: images[currentImageIndex]
+        });
         
-        gazeData.push(record);
-        updateDataDisplay();
+        // Update output (last 5 points)
+        const lastPoints = gazeData.slice(-5).reverse();
+        outputEl.textContent = lastPoints.map(p => 
+          `${p.timestamp.split('T')[1].split('.')[0]}: (${Math.round(p.x)}, ${Math.round(p.y)})`
+        ).join('\n');
       };
     }
 
-    // Update the displayed data
-    function updateDataDisplay() {
-      const lastFive = gazeData.slice(-5).reverse();
-      gazeDataDisplay.innerHTML = lastFive.map(entry => 
-        `<div>
-          <strong>${new Date(entry.timestamp).toLocaleTimeString()}</strong><br>
-          Image: ${entry.image.split('/')[4]}<br>
-          Position: (${Math.round(entry.gazeX)}, ${Math.round(entry.gazeY)})<br>
-          ${entry.isFixation ? 'Fixated' : 'Moving'}
-        </div><hr>`
-      ).join('');
-    }
-
-    // Change to next image
-    nextImageBtn.addEventListener('click', () => {
-      currentImageIndex = (currentImageIndex + 1) % testImages.length;
-      targetImage.src = testImages[currentImageIndex];
-      gazeData.push({
-        timestamp: new Date().toISOString(),
-        event: 'Image changed to: ' + testImages[currentImageIndex]
-      });
-      updateDataDisplay();
+    // 3. IMAGE CONTROLS
+    nextBtn.addEventListener('click', () => {
+      currentImageIndex = (currentImageIndex + 1) % images.length;
+      targetImage.src = images[currentImageIndex];
+      outputEl.textContent += `\n\nIMAGE CHANGED TO #${currentImageIndex + 1}\n`;
     });
 
-    // Export collected data
-    exportDataBtn.addEventListener('click', () => {
-      const dataStr = JSON.stringify(gazeData, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `gaze-data-${new Date().toISOString()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    });
+    // DEBUG: Force show elements if still hidden
+    setTimeout(() => {
+      if (trackingUI.classList.contains('hidden')) {
+        trackingUI.classList.remove('hidden');
+        targetImage.src = images[0];
+        outputEl.textContent = "DEBUG: Forced UI visible\n" + outputEl.textContent;
+      }
+    }, 3000);
   </script>
 </body>
 </html>
