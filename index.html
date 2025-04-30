@@ -1,61 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Gaze Tracking Example</title>
+  <meta charset="UTF-8" />
+  <title>Simple Gaze Test</title>
   <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
 </head>
 <body>
-  <h1>Gaze Tracking Test</h1>
-  <p id="status">Status: Initializing...</p>
-  <button onclick="downloadCSV()">Download Gaze Data</button>
+  <h2>Simple Gaze Tracker</h2>
+  <p id="status">Status: waiting</p>
 
   <script>
-    const gazeData = [];
-
-    window.addEventListener("load", function() {
+    setTimeout(() => {
       GazeCloudAPI.StartEyeTracking();
-
-      GazeCloudAPI.OnResult = function(GazeData) {
-        if (GazeData.state === 0) {
-          gazeData.push({
-            x: GazeData.docX,
-            y: GazeData.docY,
-            time: GazeData.time
-          });
-        }
+      GazeCloudAPI.OnCalibrationComplete = () => {
+        document.getElementById("status").textContent = "Status: Calibrated!";
       };
-
-      GazeCloudAPI.OnCalibrationComplete = function() {
-        document.getElementById("status").innerText = "Status: Calibration Complete!";
+      GazeCloudAPI.OnError = (msg) => {
+        document.getElementById("status").textContent = "Error: " + msg;
       };
-
-      GazeCloudAPI.OnCamDenied = function() {
-        document.getElementById("status").innerText = "Status: Camera access denied.";
+      GazeCloudAPI.OnCamDenied = () => {
+        document.getElementById("status").textContent = "Camera denied";
       };
-
-      GazeCloudAPI.OnError = function(msg) {
-        document.getElementById("status").innerText = "Status: Error - " + msg;
-      };
-
-      GazeCloudAPI.UseClickRecalibration = true;
-    });
-
-    function downloadCSV() {
-      let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Time,X,Y\n";
-      gazeData.forEach(point => {
-        csvContent += `${point.time},${point.x},${point.y}\n`;
-      });
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "gaze_data.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    }, 1000);
   </script>
 </body>
 </html>
