@@ -51,22 +51,26 @@
     const status = document.getElementById('status');
 
     const calibrationPoints = [
-      { x: '10%', y: '10%' },
-      { x: '90%', y: '10%' },
-      { x: '50%', y: '50%' },
-      { x: '10%', y: '90%' },
-      { x: '90%', y: '90%' }
+      { x: 10, y: 10 },
+      { x: 90, y: 10 },
+      { x: 50, y: 50 },
+      { x: 10, y: 90 },
+      { x: 90, y: 90 }
     ];
 
     let calibrationDone = 0;
 
-    function createCalibrationPoint(x, y) {
+    function createCalibrationPoint(xPercent, yPercent) {
       const point = document.createElement('div');
       point.className = 'calibration-point';
-      point.style.left = x;
-      point.style.top = y;
+
+      const x = window.innerWidth * (xPercent / 100);
+      const y = window.innerHeight * (yPercent / 100);
+
+      point.style.left = `${x}px`;
+      point.style.top = `${y}px`;
+
       point.addEventListener('click', () => {
-        // Train 5 times on the same spot
         const rect = point.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
@@ -78,9 +82,10 @@
         point.remove();
         calibrationDone++;
         if (calibrationDone === calibrationPoints.length) {
-          status.textContent = "Calibration done! Gaze tracking active.";
+          status.textContent = "✅ Calibration done! Gaze tracking active.";
         }
       });
+
       document.body.appendChild(point);
     }
 
@@ -95,7 +100,6 @@
                         if (data) {
                           dot.style.left = `${data.x}px`;
                           dot.style.top = `${data.y}px`;
-                          console.log(`Gaze at: ${Math.round(data.x)}, ${Math.round(data.y)}`);
                         }
                       })
                       .begin();
@@ -104,14 +108,13 @@
                 .showPredictionPoints(false)
                 .showFaceOverlay(false);
 
-        // Give time for WebGazer to initialize
         setTimeout(() => {
           status.textContent = "Click each blue dot to calibrate.";
           calibrationPoints.forEach(pt => createCalibrationPoint(pt.x, pt.y));
         }, 1000);
 
       } catch (err) {
-        status.textContent = "Camera access denied or error.";
+        status.textContent = "❌ Camera access denied or error.";
         console.error(err);
       }
     }
