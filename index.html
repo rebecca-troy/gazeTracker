@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gaze Tracker</title>
+  <title>Gaze Tracker with Calibration</title>
   <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <style>
     body {
@@ -10,6 +10,7 @@
       background: white;
       padding: 20px;
       margin: 0;
+      overflow: hidden;
     }
     #tracking-ui {
       border: 3px solid red;
@@ -55,12 +56,35 @@
       background: #f5f5f5;
       padding: 10px;
     }
+    #calibration {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255,255,255,0.9);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-content: space-between;
+      padding: 20px;
+      z-index: 200;
+    }
+    .calib-dot {
+      width: 30px;
+      height: 30px;
+      background: blue;
+      border-radius: 50%;
+      margin: 0;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <h1>Gaze Tracking Experiment</h1>
   <div id="status">Status: Not started</div>
   <button id="startBtn">Start Tracking</button>
+
+  <div id="calibration" class="hidden"></div>
 
   <div id="tracking-ui" class="hidden">
     <h2>Look at this image:</h2>
@@ -78,8 +102,8 @@
     const targetImage = document.getElementById('target-image');
     const gazePointer = document.getElementById('gaze-pointer');
     const outputEl = document.getElementById('output');
+    const calibrationEl = document.getElementById('calibration');
 
-    // Replace with raw GitHub URLs of your images
     const images = [
       'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract1.jpg',
       'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract2.jpg',
@@ -88,7 +112,7 @@
 
     let currentImageIndex = 0;
     let imageCycleInterval;
-    let gazeTrackingInterval;
+    let calibrationCount = 0;
 
     // Preload images
     function preloadImages() {
@@ -97,49 +121,6 @@
         img.src = imgUrl;
       });
     }
-
-    // Start the gaze tracking
-    startBtn.addEventListener('click', async () => {
-      statusEl.textContent = "Requesting camera permission...";
-      startBtn.disabled = true;
-
-      try {
-        // Request camera access first
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        
-        // Initialize WebGazer after we have camera access
-        statusEl.textContent = "Initializing gaze tracking...";
-        
-        webgazer.setRegression('ridge')
-               .setTracker('clmtrackr')
-               .setGazeListener(function(data, elapsedTime) {
-                 if (data == null) return;
-                 
-                 // Update gaze pointer
-                 gazePointer.style.left = `${data.x}px`;
-                 gazePointer.style.top = `${data.y}px`;
-                 
-                 // Output gaze coordinates
-                 outputEl.textContent = `X: ${Math.round(data.x)}, Y: ${Math.round(data.y)}\nElapsed Time: ${Math.round(elapsedTime)}ms`;
-               })
-               .begin()
-               .showPredictionPoints(false);
-
-        // Wait for the tracker to initialize
-        await webgazer.getTracker().init();
-        
-        statusEl.textContent = "Tracking active! Look at the image!";
-        trackingUI.classList.remove('hidden');
-        preloadImages();
-        loadCurrentImage();
-        startImageCycle();
-        
-      } catch (err) {
-        statusEl.textContent = "Error: " + err.message;
-        console.error(err);
-        startBtn.disabled = false;
-      }
-    });
 
     // Load current image with error handling
     function loadCurrentImage() {
@@ -155,13 +136,79 @@
       imageCycleInterval = setInterval(() => {
         currentImageIndex = (currentImageIndex + 1) % images.length;
         loadCurrentImage();
-      }, 10000); // every 10 seconds
+      }, 10000);
     }
 
-    // Clean up when the page is unloaded
+    function createCalibrationDots() {
+      calibrationEl.innerHTML = '';
+      const dotPositions = [
+        'flex-start', 'center', 'flex-end',
+        'flex-start', 'center', 'flex-end',
+        'flex-start', 'center', 'flex-end'
+      ];
+      for (let i = 0; i < 9; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'calib-dot';
+        dot.style.alignSelf = dotPositions[i % 3];
+        dot.style.justifySelf = dotPositions[Math.floor(i / 3)];
+        dot.addEventListener('click', () => {
+          webgazer.recordScreenPosition(dot.offsetLeft + 15, dot.offsetTop + 15, 'click');
+          dot.style.background = 'green';
+          dot.disabled = true;
+          calibrationCount++;
+          if (calibrationCount >= 9) finishCalibration();
+        });
+        calibrationEl.appendChild(dot);
+      }
+    }
+
+    function finishCalibration() {
+      calibrationEl.classList.add('hidden');
+      trackingUI.classList.remove('hidden');
+      statusEl.textContent = "Tracking active! Look at the image!";
+      loadCurrentImage();
+      startImageCycle();
+    }
+
+    // Start the gaze tracking
+    startBtn.addEventListener('click', async () => {
+      statusEl.textContent = "Requesting camera permission...";
+      startBtn.disabled = true;
+
+      try {
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        statusEl.textContent = "Initializing gaze tracking...";
+        await webgazer.setRegression('ridge')
+                      .setTracker('clmtrackr')
+                      .showVideoPreview(true)
+                      .showFaceOverlay(true)
+                      .showFaceFeedbackBox(true)
+                      .begin();
+
+        // Listen for gaze data
+        webgazer.setGazeListener(function(data, elapsedTime) {
+          if (!data) return;
+          gazePointer.style.left = `${data.x}px`;
+          gazePointer.style.top = `${data.y}px`;
+          outputEl.textContent = `X: ${Math.round(data.x)}, Y: ${Math.round(data.y)}\nElapsed Time: ${Math.round(elapsedTime)}ms`;
+        });
+
+        statusEl.textContent = "Please click each blue dot to calibrate.";
+        calibrationEl.classList.remove('hidden');
+        createCalibrationDots();
+        preloadImages();
+
+      } catch (err) {
+        statusEl.textContent = "Error: " + err.message;
+        console.error(err);
+        startBtn.disabled = false;
+      }
+    });
+
+    // Clean up on exit
     window.addEventListener('beforeunload', function() {
       if (imageCycleInterval) clearInterval(imageCycleInterval);
-      if (gazeTrackingInterval) clearInterval(gazeTrackingInterval);
       webgazer.end();
     });
   </script>
