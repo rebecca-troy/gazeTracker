@@ -2,29 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Calibrated Gaze Tracker</title>
+  <title>Gaze Tracker with Calibration</title>
   <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <style>
-    body { margin: 0; background: #f0f0f0; font-family: sans-serif; }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      overflow: hidden;
+      background: #fafafa;
+    }
     #gaze-dot {
       position: absolute;
       width: 20px;
       height: 20px;
       background: red;
       border-radius: 50%;
-      pointer-events: none;
       transform: translate(-50%, -50%);
+      pointer-events: none;
       z-index: 10;
     }
     .calibration-point {
+      position: absolute;
       width: 30px;
       height: 30px;
       background: blue;
       border-radius: 50%;
-      position: absolute;
-      z-index: 100;
-      cursor: pointer;
       opacity: 0.7;
+      cursor: pointer;
+      z-index: 100;
     }
     #status {
       position: absolute;
@@ -32,14 +37,13 @@
       left: 10px;
       background: black;
       color: white;
-      padding: 10px;
-      font-size: 14px;
+      padding: 10px 15px;
       z-index: 200;
     }
   </style>
 </head>
 <body>
-  <div id="status">Initializing...</div>
+  <div id="status">Loading camera...</div>
   <div id="gaze-dot"></div>
 
   <script>
@@ -47,59 +51,72 @@
     const status = document.getElementById('status');
 
     const calibrationPoints = [
-      { x: 10, y: 10 },
-      { x: 90, y: 10 },
-      { x: 50, y: 50 },
-      { x: 10, y: 90 },
-      { x: 90, y: 90 }
+      { x: '10%', y: '10%' },
+      { x: '90%', y: '10%' },
+      { x: '50%', y: '50%' },
+      { x: '10%', y: '90%' },
+      { x: '90%', y: '90%' }
     ];
-    let calibrationCount = 0;
 
-    function showCalibrationDots() {
-      calibrationPoints.forEach((pos, i) => {
-        const el = document.createElement('div');
-        el.className = 'calibration-point';
-        el.style.left = `${pos.x}vw`;
-        el.style.top = `${pos.y}vh`;
-        el.addEventListener('click', () => {
-          for (let j = 0; j < 5; j++) {
-            webgazer.recordScreenPosition(el.offsetLeft + 15, el.offsetTop + 15, 'click');
-          }
-          el.remove();
-          calibrationCount++;
-          if (calibrationCount === calibrationPoints.length) {
-            status.textContent = "Calibration complete. Move your eyes!";
-          }
-        });
-        document.body.appendChild(el);
+    let calibrationDone = 0;
+
+    function createCalibrationPoint(x, y) {
+      const point = document.createElement('div');
+      point.className = 'calibration-point';
+      point.style.left = x;
+      point.style.top = y;
+      point.addEventListener('click', () => {
+        // Train 5 times on the same spot
+        const rect = point.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        for (let i = 0; i < 5; i++) {
+          webgazer.recordScreenPosition(centerX, centerY, 'click');
+        }
+
+        point.remove();
+        calibrationDone++;
+        if (calibrationDone === calibrationPoints.length) {
+          status.textContent = "Calibration done! Gaze tracking active.";
+        }
       });
-      status.textContent = "Click all the blue dots to calibrate.";
+      document.body.appendChild(point);
     }
 
-    async function startTracking() {
+    async function startWebGazer() {
       try {
         await navigator.mediaDevices.getUserMedia({ video: true });
         status.textContent = "Starting WebGazer...";
 
         await webgazer.setRegression('ridge')
                       .setTracker('clmtrackr')
-                      .setGazeListener((data, time) => {
+                      .setGazeListener((data) => {
                         if (data) {
                           dot.style.left = `${data.x}px`;
                           dot.style.top = `${data.y}px`;
-                          console.log(`Gaze at (${Math.round(data.x)}, ${Math.round(data.y)})`);
+                          console.log(`Gaze at: ${Math.round(data.x)}, ${Math.round(data.y)}`);
                         }
                       })
                       .begin();
 
-        showCalibrationDots();
+        webgazer.showVideo(false)
+                .showPredictionPoints(false)
+                .showFaceOverlay(false);
+
+        // Give time for WebGazer to initialize
+        setTimeout(() => {
+          status.textContent = "Click each blue dot to calibrate.";
+          calibrationPoints.forEach(pt => createCalibrationPoint(pt.x, pt.y));
+        }, 1000);
+
       } catch (err) {
-        console.error("Error:", err);
-        status.textContent = "Camera error: " + err.message;
+        status.textContent = "Camera access denied or error.";
+        console.error(err);
       }
     }
 
-    startTracking();
+    startWebGazer();
 
     window.addEventListener('beforeunload', () => {
       webgazer.end();
