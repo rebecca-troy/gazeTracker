@@ -2,15 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Minimal Gaze Tracker</title>
+  <title>Calibrated Gaze Tracker</title>
   <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: #f9f9f9;
-      font-family: sans-serif;
-    }
+    body { margin: 0; background: #f0f0f0; font-family: sans-serif; }
     #gaze-dot {
       position: absolute;
       width: 20px;
@@ -19,18 +14,27 @@
       border-radius: 50%;
       pointer-events: none;
       transform: translate(-50%, -50%);
-      z-index: 999;
+      z-index: 10;
+    }
+    .calibration-point {
+      width: 30px;
+      height: 30px;
+      background: blue;
+      border-radius: 50%;
+      position: absolute;
+      z-index: 100;
+      cursor: pointer;
+      opacity: 0.7;
     }
     #status {
       position: absolute;
       top: 10px;
       left: 10px;
-      background: rgba(0,0,0,0.7);
+      background: black;
       color: white;
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 10px;
       font-size: 14px;
-      z-index: 1000;
+      z-index: 200;
     }
   </style>
 </head>
@@ -39,44 +43,63 @@
   <div id="gaze-dot"></div>
 
   <script>
-    const status = document.getElementById('status');
     const dot = document.getElementById('gaze-dot');
+    const status = document.getElementById('status');
 
-    async function startGaze() {
-      status.textContent = "Requesting camera permission...";
-      console.log("Requesting webcam...");
+    const calibrationPoints = [
+      { x: 10, y: 10 },
+      { x: 90, y: 10 },
+      { x: 50, y: 50 },
+      { x: 10, y: 90 },
+      { x: 90, y: 90 }
+    ];
+    let calibrationCount = 0;
 
+    function showCalibrationDots() {
+      calibrationPoints.forEach((pos, i) => {
+        const el = document.createElement('div');
+        el.className = 'calibration-point';
+        el.style.left = `${pos.x}vw`;
+        el.style.top = `${pos.y}vh`;
+        el.addEventListener('click', () => {
+          for (let j = 0; j < 5; j++) {
+            webgazer.recordScreenPosition(el.offsetLeft + 15, el.offsetTop + 15, 'click');
+          }
+          el.remove();
+          calibrationCount++;
+          if (calibrationCount === calibrationPoints.length) {
+            status.textContent = "Calibration complete. Move your eyes!";
+          }
+        });
+        document.body.appendChild(el);
+      });
+      status.textContent = "Click all the blue dots to calibrate.";
+    }
+
+    async function startTracking() {
       try {
         await navigator.mediaDevices.getUserMedia({ video: true });
-        console.log("Webcam access granted");
-
         status.textContent = "Starting WebGazer...";
+
         await webgazer.setRegression('ridge')
                       .setTracker('clmtrackr')
-                      .setGazeListener((data, elapsedTime) => {
+                      .setGazeListener((data, time) => {
                         if (data) {
-                          dot.style.left = data.x + 'px';
-                          dot.style.top = data.y + 'px';
+                          dot.style.left = `${data.x}px`;
+                          dot.style.top = `${data.y}px`;
                           console.log(`Gaze at (${Math.round(data.x)}, ${Math.round(data.y)})`);
                         }
                       })
                       .begin();
 
-        status.textContent = "Tracking gaze... move your eyes!";
-        console.log("WebGazer initialized");
-
-        webgazer.showVideoPreview(true)
-                .showPredictionPoints(true)
-                .showFaceOverlay(true)
-                .showFaceFeedbackBox(true);
-
+        showCalibrationDots();
       } catch (err) {
-        status.textContent = "Error: " + err.message;
-        console.error("Error initializing gaze tracker:", err);
+        console.error("Error:", err);
+        status.textContent = "Camera error: " + err.message;
       }
     }
 
-    startGaze();
+    startTracking();
 
     window.addEventListener('beforeunload', () => {
       webgazer.end();
