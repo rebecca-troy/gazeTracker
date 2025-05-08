@@ -28,6 +28,11 @@
       background: #4CAF50;
       color: white;
       border: none;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
     }
     .hidden {
       display: none;
@@ -40,6 +45,15 @@
       border-radius: 50%;
       transform: translate(-10px, -10px);
       pointer-events: none;
+      z-index: 100;
+    }
+    #output {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #f5f5f5;
+      padding: 10px;
     }
   </style>
 </head>
@@ -73,54 +87,83 @@
     ];
 
     let currentImageIndex = 0;
+    let imageCycleInterval;
+    let gazeTrackingInterval;
+
+    // Preload images
+    function preloadImages() {
+      images.forEach(imgUrl => {
+        const img = new Image();
+        img.src = imgUrl;
+      });
+    }
 
     // Start the gaze tracking
-    startBtn.addEventListener('click', () => {
-      statusEl.textContent = "Initializing camera...";
+    startBtn.addEventListener('click', async () => {
+      statusEl.textContent = "Requesting camera permission...";
       startBtn.disabled = true;
 
-      // Initialize WebGazer
-      webgazer.setRegression('ridge')  // Ridge regression model
-            .setTracker('clmtrackr')  // Use clmtrackr for facial landmarks
-            .begin();
+      try {
+        // Request camera access first
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        // Initialize WebGazer after we have camera access
+        statusEl.textContent = "Initializing gaze tracking...";
+        
+        webgazer.setRegression('ridge')
+               .setTracker('clmtrackr')
+               .setGazeListener(function(data, elapsedTime) {
+                 if (data == null) return;
+                 
+                 // Update gaze pointer
+                 gazePointer.style.left = `${data.x}px`;
+                 gazePointer.style.top = `${data.y}px`;
+                 
+                 // Output gaze coordinates
+                 outputEl.textContent = `X: ${Math.round(data.x)}, Y: ${Math.round(data.y)}\nElapsed Time: ${Math.round(elapsedTime)}ms`;
+               })
+               .begin()
+               .showPredictionPoints(false);
 
-      webgazer.showPredictionPoints(false); // Disable prediction points (optional)
-
-      // Wait for the webcam and start tracking
-      webgazer.getTracker().init().then(() => {
-        statusEl.textContent = "Tracking... Look at the image!";
+        // Wait for the tracker to initialize
+        await webgazer.getTracker().init();
+        
+        statusEl.textContent = "Tracking active! Look at the image!";
         trackingUI.classList.remove('hidden');
-        targetImage.src = images[currentImageIndex];
+        preloadImages();
+        loadCurrentImage();
         startImageCycle();
-      }).catch((err) => {
-        statusEl.textContent = "Error initializing tracker: " + err;
-      });
+        
+      } catch (err) {
+        statusEl.textContent = "Error: " + err.message;
+        console.error(err);
+        startBtn.disabled = false;
+      }
     });
+
+    // Load current image with error handling
+    function loadCurrentImage() {
+      targetImage.onerror = function() {
+        outputEl.textContent += `\nFailed to load image ${images[currentImageIndex]}\n`;
+      };
+      targetImage.src = images[currentImageIndex];
+      outputEl.textContent += `\nLoaded image #${currentImageIndex + 1}\n`;
+    }
 
     // Start image cycle (change images every 10 seconds)
     function startImageCycle() {
-      setInterval(() => {
+      imageCycleInterval = setInterval(() => {
         currentImageIndex = (currentImageIndex + 1) % images.length;
-        targetImage.src = images[currentImageIndex];
-        outputEl.textContent += `\n\nIMAGE CHANGED TO #${currentImageIndex + 1}\n`;
+        loadCurrentImage();
       }, 10000); // every 10 seconds
     }
 
-    // Function to track gaze coordinates
-    function trackGaze() {
-      const gazeData = webgazer.getCurrentPrediction();
-      if (gazeData) {
-        // Update the gaze pointer's position
-        gazePointer.style.left = `${gazeData.x}px`;
-        gazePointer.style.top = `${gazeData.y}px`;
-
-        // Output gaze coordinates to the screen
-        outputEl.textContent = `X: ${Math.round(gazeData.x)}, Y: ${Math.round(gazeData.y)}`;
-      }
-    }
-
-    // Continuously track gaze every frame
-    setInterval(trackGaze, 100);  // Update gaze every 100ms
+    // Clean up when the page is unloaded
+    window.addEventListener('beforeunload', function() {
+      if (imageCycleInterval) clearInterval(imageCycleInterval);
+      if (gazeTrackingInterval) clearInterval(gazeTrackingInterval);
+      webgazer.end();
+    });
   </script>
 </body>
 </html>
