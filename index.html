@@ -49,55 +49,49 @@
   <script>
     const dot = document.getElementById('gaze-dot');
     const status = document.getElementById('status');
-
     const calibrationClicksRequired = 5;
+    const clickCounts = {};
     let calibrationIndex = 0;
-    let clickCounts = {};
-
     const recentPoints = [];
 
-    const calibrationPoints = [];
-    for (let y of [10, 50, 90]) {
-      for (let x of [10, 50, 90]) {
-        calibrationPoints.push({ x, y });
-      }
-    }
-
-    function createCalibrationPoint(xPercent, yPercent, index) {
+    function createCalibrationPointAt(x, y, index) {
       const point = document.createElement('div');
       point.className = 'calibration-point';
-
-      const x = window.innerWidth * (xPercent / 100);
-      const y = window.innerHeight * (yPercent / 100);
-
       point.style.left = `${x}px`;
       point.style.top = `${y}px`;
-
       point.dataset.index = index;
       clickCounts[index] = 0;
 
       point.addEventListener('click', () => {
-        const rect = point.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        for (let i = 0; i < 1; i++) {
-          webgazer.recordScreenPosition(centerX, centerY, 'click');
-        }
-
+        webgazer.recordScreenPosition(x, y, 'click');
         clickCounts[index]++;
         point.style.opacity = `${0.7 * ((calibrationClicksRequired - clickCounts[index]) / calibrationClicksRequired)}`;
 
         if (clickCounts[index] >= calibrationClicksRequired) {
           point.remove();
           calibrationIndex++;
-          if (calibrationIndex >= calibrationPoints.length) {
+          if (calibrationIndex >= 9) {
             status.textContent = "✅ Calibration complete. Gaze tracking active.";
           }
         }
       });
 
       document.body.appendChild(point);
+    }
+
+    function placeCalibrationGrid() {
+      const gridRows = 3;
+      const gridCols = 3;
+      const spacingX = window.innerWidth / (gridCols + 1);
+      const spacingY = window.innerHeight / (gridRows + 1);
+
+      for (let row = 1; row <= gridRows; row++) {
+        for (let col = 1; col <= gridCols; col++) {
+          const x = spacingX * col;
+          const y = spacingY * row;
+          createCalibrationPointAt(x, y, (row - 1) * gridCols + (col - 1));
+        }
+      }
     }
 
     async function startWebGazer() {
@@ -110,7 +104,6 @@
                       .setGazeListener((data) => {
                         if (!data) return;
 
-                        // Apply smoothing (moving average)
                         recentPoints.push(data);
                         if (recentPoints.length > 10) recentPoints.shift();
 
@@ -134,9 +127,7 @@
 
         setTimeout(() => {
           status.textContent = "Click each blue dot 5 times to calibrate.";
-          calibrationPoints.forEach((pt, idx) =>
-            createCalibrationPoint(pt.x, pt.y, idx)
-          );
+          placeCalibrationGrid();
         }, 1000);
 
       } catch (err) {
