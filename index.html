@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gaze Tracker with Calibration</title>
+  <title>Improved Gaze Tracker</title>
   <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <style>
     body {
@@ -50,17 +50,20 @@
     const dot = document.getElementById('gaze-dot');
     const status = document.getElementById('status');
 
-    const calibrationPoints = [
-      { x: 10, y: 10 },
-      { x: 90, y: 10 },
-      { x: 50, y: 50 },
-      { x: 10, y: 90 },
-      { x: 90, y: 90 }
-    ];
+    const calibrationClicksRequired = 5;
+    let calibrationIndex = 0;
+    let clickCounts = {};
 
-    let calibrationDone = 0;
+    const recentPoints = [];
 
-    function createCalibrationPoint(xPercent, yPercent) {
+    const calibrationPoints = [];
+    for (let y of [10, 50, 90]) {
+      for (let x of [10, 50, 90]) {
+        calibrationPoints.push({ x, y });
+      }
+    }
+
+    function createCalibrationPoint(xPercent, yPercent, index) {
       const point = document.createElement('div');
       point.className = 'calibration-point';
 
@@ -70,19 +73,27 @@
       point.style.left = `${x}px`;
       point.style.top = `${y}px`;
 
+      point.dataset.index = index;
+      clickCounts[index] = 0;
+
       point.addEventListener('click', () => {
         const rect = point.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
 
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 1; i++) {
           webgazer.recordScreenPosition(centerX, centerY, 'click');
         }
 
-        point.remove();
-        calibrationDone++;
-        if (calibrationDone === calibrationPoints.length) {
-          status.textContent = "✅ Calibration done! Gaze tracking active.";
+        clickCounts[index]++;
+        point.style.opacity = `${0.7 * ((calibrationClicksRequired - clickCounts[index]) / calibrationClicksRequired)}`;
+
+        if (clickCounts[index] >= calibrationClicksRequired) {
+          point.remove();
+          calibrationIndex++;
+          if (calibrationIndex >= calibrationPoints.length) {
+            status.textContent = "✅ Calibration complete. Gaze tracking active.";
+          }
         }
       });
 
@@ -97,10 +108,23 @@
         await webgazer.setRegression('ridge')
                       .setTracker('clmtrackr')
                       .setGazeListener((data) => {
-                        if (data) {
-                          dot.style.left = `${data.x}px`;
-                          dot.style.top = `${data.y}px`;
-                        }
+                        if (!data) return;
+
+                        // Apply smoothing (moving average)
+                        recentPoints.push(data);
+                        if (recentPoints.length > 10) recentPoints.shift();
+
+                        const avg = recentPoints.reduce((acc, pt) => {
+                          acc.x += pt.x;
+                          acc.y += pt.y;
+                          return acc;
+                        }, { x: 0, y: 0 });
+
+                        const avgX = avg.x / recentPoints.length;
+                        const avgY = avg.y / recentPoints.length;
+
+                        dot.style.left = `${avgX}px`;
+                        dot.style.top = `${avgY}px`;
                       })
                       .begin();
 
@@ -109,12 +133,14 @@
                 .showFaceOverlay(false);
 
         setTimeout(() => {
-          status.textContent = "Click each blue dot to calibrate.";
-          calibrationPoints.forEach(pt => createCalibrationPoint(pt.x, pt.y));
+          status.textContent = "Click each blue dot 5 times to calibrate.";
+          calibrationPoints.forEach((pt, idx) =>
+            createCalibrationPoint(pt.x, pt.y, idx)
+          );
         }, 1000);
 
       } catch (err) {
-        status.textContent = "❌ Camera access denied or error.";
+        status.textContent = "❌ Camera error: " + err.message;
         console.error(err);
       }
     }
