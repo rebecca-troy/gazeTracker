@@ -5,7 +5,6 @@
   <title>Gaze Tracker</title>
   <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
   <style>
-    /* FORCE VISIBLE STYLES */
     body {
       font-family: Arial, sans-serif;
       background: white !important;
@@ -40,101 +39,87 @@
       background: red;
       border-radius: 50%;
       transform: translate(-10px, -10px);
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <!-- SIMPLE FALLBACK CONTENT -->
   <h1>Gaze Tracking Experiment</h1>
   <div id="status">Status: Not started</div>
   <button id="startBtn">Start Tracking</button>
-  
-  <!-- TRACKING UI (Initially hidden) -->
+
   <div id="tracking-ui" class="hidden">
     <h2>Look at this image:</h2>
     <div style="position:relative">
-      <img id="target-image" src="https://via.placeholder.com/600x400?text=Test+Image" alt="Test image">
+      <img id="target-image" src="https://via.placeholder.com/600x400?text=Loading..." alt="Test image">
       <div id="gaze-pointer"></div>
     </div>
-    <button id="next-btn">Next Image</button>
     <pre id="output">Gaze data will appear here...</pre>
   </div>
 
   <script>
-    // DOM ELEMENTS
     const statusEl = document.getElementById('status');
     const startBtn = document.getElementById('startBtn');
     const trackingUI = document.getElementById('tracking-ui');
     const targetImage = document.getElementById('target-image');
     const gazePointer = document.getElementById('gaze-pointer');
     const outputEl = document.getElementById('output');
-    const nextBtn = document.getElementById('next-btn');
 
-    // TEST IMAGES
+    // Replace with raw GitHub URLs
     const images = [
-      'https://via.placeholder.com/600x400/FF0000/FFFFFF?text=Red',
-      'https://via.placeholder.com/600x400/00FF00/FFFFFF?text=Green',
-      'https://via.placeholder.com/600x400/0000FF/FFFFFF?text=Blue'
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract1.jpg',
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract2.jpg',
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract3.jpg'
     ];
+
     let currentImageIndex = 0;
     let gazeData = [];
 
-    // 1. INITIALIZE TRACKING
     startBtn.addEventListener('click', () => {
       statusEl.textContent = "Calibrating...";
       startBtn.disabled = true;
-      
+
       GazeCloudAPI.StartEyeTracking();
-      
+
       GazeCloudAPI.OnCalibrationComplete = () => {
         statusEl.textContent = "Calibrated! Tracking...";
         trackingUI.classList.remove('hidden');
+        targetImage.src = images[currentImageIndex];
         startTracking();
+        startImageCycle();
       };
-      
+
       GazeCloudAPI.OnError = (err) => {
         statusEl.textContent = "Error: " + err;
       };
     });
 
-    // 2. TRACKING FUNCTION
     function startTracking() {
       GazeCloudAPI.OnResult = (GazeData) => {
-        // Update gaze pointer
         gazePointer.style.left = GazeData.docX + 'px';
         gazePointer.style.top = GazeData.docY + 'px';
-        
-        // Store data
+
         gazeData.push({
           timestamp: new Date().toISOString(),
           x: GazeData.docX,
           y: GazeData.docY,
           image: images[currentImageIndex]
         });
-        
-        // Update output (last 5 points)
+
         const lastPoints = gazeData.slice(-5).reverse();
-        outputEl.textContent = lastPoints.map(p => 
+        outputEl.textContent = lastPoints.map(p =>
           `${p.timestamp.split('T')[1].split('.')[0]}: (${Math.round(p.x)}, ${Math.round(p.y)})`
         ).join('\n');
       };
     }
 
-    // 3. IMAGE CONTROLS
-    nextBtn.addEventListener('click', () => {
-      currentImageIndex = (currentImageIndex + 1) % images.length;
-      targetImage.src = images[currentImageIndex];
-      outputEl.textContent += `\n\nIMAGE CHANGED TO #${currentImageIndex + 1}\n`;
-    });
-
-    // DEBUG: Force show elements if still hidden
-    setTimeout(() => {
-      if (trackingUI.classList.contains('hidden')) {
-        trackingUI.classList.remove('hidden');
-        targetImage.src = images[0];
-        outputEl.textContent = "DEBUG: Forced UI visible\n" + outputEl.textContent;
-      }
-    }, 3000);
+    function startImageCycle() {
+      setInterval(() => {
+        currentImageIndex = (currentImageIndex + 1) % images.length;
+        targetImage.src = images[currentImageIndex];
+        outputEl.textContent += `\n\nIMAGE CHANGED TO #${currentImageIndex + 1}\n`;
+      }, 10000); // every 10 seconds
+    }
   </script>
 </body>
 </html>
