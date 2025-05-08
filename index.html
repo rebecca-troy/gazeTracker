@@ -51,7 +51,7 @@
   <div id="tracking-ui" class="hidden">
     <h2>Look at this image:</h2>
     <div style="position:relative">
-      <img id="target-image" src="https://via.placeholder.com/600x400?text=Loading..." alt="Test image">
+      <img id="target-image" src="./Abstract1.jpg" alt="Test image">
       <div id="gaze-pointer"></div>
     </div>
     <pre id="output">Gaze data will appear here...</pre>
@@ -65,11 +65,10 @@
     const gazePointer = document.getElementById('gaze-pointer');
     const outputEl = document.getElementById('output');
 
-    // Replace with raw GitHub URLs
     const images = [
-      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract1.jpg',
-      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract2.jpg',
-      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract3.jpg'
+      './Abstract1.jpg',
+      './Abstract2.jpg',
+      './Abstract3.jpg'
     ];
 
     let currentImageIndex = 0;
