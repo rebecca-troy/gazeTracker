@@ -3,34 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <title>Gaze Tracker</title>
-  <script src="https://api.gazerecorder.com/GazeCloudAPI.js"></script>
+  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: white !important;
-      padding: 20px !important;
-      margin: 0 !important;
+      background: white;
+      padding: 20px;
+      margin: 0;
     }
     #tracking-ui {
-      border: 3px solid red !important;
-      padding: 20px !important;
-      margin-top: 20px !important;
+      border: 3px solid red;
+      padding: 20px;
+      margin-top: 20px;
     }
     img {
-      max-width: 100% !important;
-      height: auto !important;
-      border: 2px solid blue !important;
+      max-width: 100%;
+      height: auto;
+      border: 2px solid blue;
     }
     button {
-      padding: 10px !important;
-      font-size: 16px !important;
-      margin: 10px !important;
-      background: #4CAF50 !important;
-      color: white !important;
-      border: none !important;
+      padding: 10px;
+      font-size: 16px;
+      margin: 10px;
+      background: #4CAF50;
+      color: white;
+      border: none;
     }
     .hidden {
-      display: none !important;
+      display: none;
     }
     #gaze-pointer {
       position: absolute;
@@ -51,7 +51,7 @@
   <div id="tracking-ui" class="hidden">
     <h2>Look at this image:</h2>
     <div style="position:relative">
-      <img id="target-image" src="./Abstract1.jpg" alt="Test image">
+      <img id="target-image" src="https://via.placeholder.com/600x400?text=Loading..." alt="Test image">
       <div id="gaze-pointer"></div>
     </div>
     <pre id="output">Gaze data will appear here...</pre>
@@ -65,53 +65,39 @@
     const gazePointer = document.getElementById('gaze-pointer');
     const outputEl = document.getElementById('output');
 
+    // Replace with raw GitHub URLs of your images
     const images = [
-      './Abstract1.jpg',
-      './Abstract2.jpg',
-      './Abstract3.jpg'
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract1.jpg',
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract2.jpg',
+      'https://raw.githubusercontent.com/rebecca-troy/gazeTracker/main/Abstract3.jpg'
     ];
 
     let currentImageIndex = 0;
-    let gazeData = [];
 
+    // Start the gaze tracking
     startBtn.addEventListener('click', () => {
-      statusEl.textContent = "Calibrating...";
+      statusEl.textContent = "Initializing camera...";
       startBtn.disabled = true;
 
-      GazeCloudAPI.StartEyeTracking();
+      // Initialize WebGazer
+      webgazer.setRegression('ridge')  // Ridge regression model
+            .setTracker('clmtrackr')  // Use clmtrackr for facial landmarks
+            .begin();
 
-      GazeCloudAPI.OnCalibrationComplete = () => {
-        statusEl.textContent = "Calibrated! Tracking...";
+      webgazer.showPredictionPoints(false); // Disable prediction points (optional)
+
+      // Wait for the webcam and start tracking
+      webgazer.getTracker().init().then(() => {
+        statusEl.textContent = "Tracking... Look at the image!";
         trackingUI.classList.remove('hidden');
         targetImage.src = images[currentImageIndex];
-        startTracking();
         startImageCycle();
-      };
-
-      GazeCloudAPI.OnError = (err) => {
-        statusEl.textContent = "Error: " + err;
-      };
+      }).catch((err) => {
+        statusEl.textContent = "Error initializing tracker: " + err;
+      });
     });
 
-    function startTracking() {
-      GazeCloudAPI.OnResult = (GazeData) => {
-        gazePointer.style.left = GazeData.docX + 'px';
-        gazePointer.style.top = GazeData.docY + 'px';
-
-        gazeData.push({
-          timestamp: new Date().toISOString(),
-          x: GazeData.docX,
-          y: GazeData.docY,
-          image: images[currentImageIndex]
-        });
-
-        const lastPoints = gazeData.slice(-5).reverse();
-        outputEl.textContent = lastPoints.map(p =>
-          `${p.timestamp.split('T')[1].split('.')[0]}: (${Math.round(p.x)}, ${Math.round(p.y)})`
-        ).join('\n');
-      };
-    }
-
+    // Start image cycle (change images every 10 seconds)
     function startImageCycle() {
       setInterval(() => {
         currentImageIndex = (currentImageIndex + 1) % images.length;
@@ -119,6 +105,22 @@
         outputEl.textContent += `\n\nIMAGE CHANGED TO #${currentImageIndex + 1}\n`;
       }, 10000); // every 10 seconds
     }
+
+    // Function to track gaze coordinates
+    function trackGaze() {
+      const gazeData = webgazer.getCurrentPrediction();
+      if (gazeData) {
+        // Update the gaze pointer's position
+        gazePointer.style.left = `${gazeData.x}px`;
+        gazePointer.style.top = `${gazeData.y}px`;
+
+        // Output gaze coordinates to the screen
+        outputEl.textContent = `X: ${Math.round(gazeData.x)}, Y: ${Math.round(gazeData.y)}`;
+      }
+    }
+
+    // Continuously track gaze every frame
+    setInterval(trackGaze, 100);  // Update gaze every 100ms
   </script>
 </body>
 </html>
