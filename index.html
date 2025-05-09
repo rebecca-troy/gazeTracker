@@ -1,95 +1,150 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Accurate Eye Tracker (Step 1)</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <style>
-    video, canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      transform: scaleX(-1); /* mirror webcam */
+<script>
+  const video = document.querySelector('.input_video');
+  const canvas = document.querySelector('.output_canvas');
+  const ctx = canvas.getContext('2d');
+  const debug = document.getElementById('debug');
+
+  const faceMesh = new FaceMesh({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
+  });
+
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+  });
+
+  faceMesh.onResults(onResults);
+
+  const camera = new Camera(video, {
+    onFrame: async () => await faceMesh.send({ image: video }),
+    width: 640,
+    height: 480
+  });
+  camera.start();
+
+  // Calibration dot
+  const dot = document.createElement('div');
+  dot.style.position = 'absolute';
+  dot.style.width = '20px';
+  dot.style.height = '20px';
+  dot.style.borderRadius = '50%';
+  dot.style.background = 'red';
+  dot.style.zIndex = '100';
+  dot.style.pointerEvents = 'none';
+  document.body.appendChild(dot);
+
+  const gridPoints = [];
+  const gridRows = 4, gridCols = 4;
+  for (let r = 1; r <= gridRows; r++) {
+    for (let c = 1; c <= gridCols; c++) {
+      const x = (c / (gridCols + 1)) * window.innerWidth;
+      const y = (r / (gridRows + 1)) * window.innerHeight;
+      gridPoints.push({ x, y });
     }
-    #debug {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      padding: 10px;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      z-index: 10;
-    }
-  </style>
-</head>
-<body>
-  <video class="input_video" autoplay muted playsinline></video>
-  <canvas class="output_canvas"></canvas>
-  <div id="debug">Initializing...</div>
+  }
 
-  <script>
-    const video = document.querySelector('.input_video');
-    const canvas = document.querySelector('.output_canvas');
-    const ctx = canvas.getContext('2d');
-    const debug = document.getElementById('debug');
+  let currentPoint = 0;
+  let samples = [];
+  let modelReady = false;
+  let regressionX = null;
+  let regressionY = null;
 
-    const faceMesh = new FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
-    });
+  function drawLandmark(pt, color = 'cyan', size = 4) {
+    ctx.beginPath();
+    ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
-    });
+  function onResults(results) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-    faceMesh.onResults(onResults);
-
-    const camera = new Camera(video, {
-      onFrame: async () => await faceMesh.send({ image: video }),
-      width: 640,
-      height: 480
-    });
-    camera.start();
-
-    function drawLandmark(pt, color = 'cyan', size = 4) {
-      ctx.beginPath();
-      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.fill();
+    if (!results.multiFaceLandmarks.length) {
+      debug.textContent = 'No face detected';
+      return;
     }
 
-    function onResults(results) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+    const lm = results.multiFaceLandmarks[0];
+    const iris = lm[468];
+    const left = lm[33];
+    const right = lm[133];
+    const top = lm[159];
+    const bottom = lm[145];
+    const nose = lm[1];
 
-      if (!results.multiFaceLandmarks.length) {
-        debug.textContent = 'No face detected';
-        return;
+    drawLandmark(iris, 'red');
+    drawLandmark(nose, 'yellow');
+
+    if (modelReady) {
+      const features = getFeatures(iris, left, right, top, bottom, nose);
+      const predX = regressionX.predict(features);
+      const predY = regressionY.predict(features);
+      drawGazeDot(predX, predY);
+      debug.textContent = `Tracking (x: ${Math.round(predX)}, y: ${Math.round(predY)})`;
+    } else {
+      const point = gridPoints[currentPoint];
+      dot.style.left = `${point.x}px`;
+      dot.style.top = `${point.y}px`;
+
+      const features = getFeatures(iris, left, right, top, bottom, nose);
+      if (features) {
+        samples.push({ features, x: point.x, y: point.y });
       }
 
-      const lm = results.multiFaceLandmarks[0];
-      const iris = lm[468]; // center of left eye
-      const leftCorner = lm[33];
-      const rightCorner = lm[133];
-      const topLid = lm[159];
-      const bottomLid = lm[145];
-      const nose = lm[1]; // head stabilization ref
-
-      drawLandmark(iris, 'red');
-      drawLandmark(leftCorner, 'blue');
-      drawLandmark(rightCorner, 'blue');
-      drawLandmark(topLid, 'green');
-      drawLandmark(bottomLid, 'green');
-      drawLandmark(nose, 'yellow');
-
-      debug.textContent = `Tracking iris. Head angle ref: nose (${nose.x.toFixed(3)}, ${nose.y.toFixed(3)})`;
+      if (samples.length % 30 === 0) {
+        currentPoint++;
+        if (currentPoint >= gridPoints.length) {
+          trainModel();
+          modelReady = true;
+          dot.remove();
+          debug.textContent = "✅ Calibration complete. Tracking live.";
+        }
+      } else {
+        debug.textContent = `Calibrating... (${samples.length} samples)`;
+      }
     }
-  </script>
-</body>
-</html>
+  }
+
+  function getFeatures(iris, left, right, top, bottom, nose) {
+    const eyeWidth = right.x - left.x;
+    const eyeHeight = bottom.y - top.y;
+    if (eyeWidth === 0 || eyeHeight === 0) return null;
+
+    const irisOffsetX = (iris.x - left.x) / eyeWidth;
+    const irisOffsetY = (iris.y - top.y) / eyeHeight;
+    return [irisOffsetX, irisOffsetY, nose.x, nose.y];
+  }
+
+  function trainModel() {
+    function fitRidge(samples, targetKey) {
+      const X = samples.map(s => s.features);
+      const Y = samples.map(s => s[targetKey]);
+      const lambda = 1;
+
+      const Xt = math.transpose(X);
+      const XtX = math.multiply(Xt, X);
+      const XtX_l2 = math.add(XtX, math.multiply(lambda, math.identity(XtX.length)));
+      const XtY = math.multiply(Xt, Y);
+      const coeffs = math.lusolve(XtX_l2, XtY).flat();
+      return {
+        predict: (features) => math.dot(coeffs, features)
+      };
+    }
+
+    regressionX = fitRidge(samples, 'x');
+    regressionY = fitRidge(samples, 'y');
+  }
+
+  function drawGazeDot(x, y) {
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, 2 * Math.PI);
+    ctx.fillStyle = 'lime';
+    ctx.fill();
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
