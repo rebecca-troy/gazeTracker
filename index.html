@@ -2,50 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Gaze Tracker with Dot</title>
+  <title>Accurate Eye Tracker (Step 1)</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <style>
     video, canvas {
       position: absolute;
-      left: 0;
       top: 0;
-      transform: scaleX(-1); /* Mirror for webcam */
+      left: 0;
+      transform: scaleX(-1); /* mirror webcam */
     }
-    #direction {
+    #debug {
       position: absolute;
       top: 10px;
       left: 10px;
+      padding: 10px;
       background: black;
       color: white;
-      padding: 10px;
-      font-size: 18px;
+      font-family: sans-serif;
       z-index: 10;
-    }
-    #gaze-dot {
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      background: red;
-      border-radius: 50%;
-      pointer-events: none;
-      transform: translate(-50%, -50%);
-      z-index: 15;
     }
   </style>
 </head>
 <body>
   <video class="input_video" autoplay muted playsinline></video>
   <canvas class="output_canvas"></canvas>
-  <div id="direction">Looking: ...</div>
-  <div id="gaze-dot"></div>
+  <div id="debug">Initializing...</div>
 
   <script>
     const video = document.querySelector('.input_video');
     const canvas = document.querySelector('.output_canvas');
     const ctx = canvas.getContext('2d');
-    const dirDisplay = document.getElementById('direction');
-    const gazeDot = document.getElementById('gaze-dot');
+    const debug = document.getElementById('debug');
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
@@ -54,60 +42,53 @@
     faceMesh.setOptions({
       maxNumFaces: 1,
       refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
     });
 
     faceMesh.onResults(onResults);
 
     const camera = new Camera(video, {
-      onFrame: async () => {
-        await faceMesh.send({ image: video });
-      },
+      onFrame: async () => await faceMesh.send({ image: video }),
       width: 640,
       height: 480
     });
     camera.start();
 
+    function drawLandmark(pt, color = 'cyan', size = 4) {
+      ctx.beginPath();
+      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
     function onResults(results) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-      if (results.multiFaceLandmarks.length === 0) return;
+      if (!results.multiFaceLandmarks.length) {
+        debug.textContent = 'No face detected';
+        return;
+      }
 
       const lm = results.multiFaceLandmarks[0];
+      const iris = lm[468]; // center of left eye
+      const leftCorner = lm[33];
+      const rightCorner = lm[133];
+      const topLid = lm[159];
+      const bottomLid = lm[145];
+      const nose = lm[1]; // head stabilization ref
 
-      // Left eye landmarks
-      const iris = lm[468];
-      const left = lm[33];
-      const right = lm[133];
-      const top = lm[159];
-      const bottom = lm[145];
+      drawLandmark(iris, 'red');
+      drawLandmark(leftCorner, 'blue');
+      drawLandmark(rightCorner, 'blue');
+      drawLandmark(topLid, 'green');
+      drawLandmark(bottomLid, 'green');
+      drawLandmark(nose, 'yellow');
 
-      const eyeWidth = right.x - left.x;
-      const eyeHeight = bottom.y - top.y;
-
-      const xNorm = (iris.x - left.x) / eyeWidth;
-      const yNorm = (iris.y - top.y) / eyeHeight;
-
-      // Direction interpretation
-      let hDir = "Center", vDir = "Center";
-      if (xNorm < 0.35) hDir = "Left";
-      else if (xNorm > 0.65) hDir = "Right";
-
-      if (yNorm < 0.35) vDir = "Up";
-      else if (yNorm > 0.65) vDir = "Down";
-
-      dirDisplay.textContent = `Looking: ${vDir}-${hDir}`;
-
-      // Map to screen coords
-      const screenX = canvas.width * xNorm;
-      const screenY = canvas.height * yNorm;
-      gazeDot.style.left = `${screenX}px`;
-      gazeDot.style.top = `${screenY}px`;
+      debug.textContent = `Tracking iris. Head angle ref: nose (${nose.x.toFixed(3)}, ${nose.y.toFixed(3)})`;
     }
   </script>
 </body>
