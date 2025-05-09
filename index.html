@@ -53,10 +53,10 @@
     let currentPointIndex = 0;
     let sampleData = [];
 
-    // Variables for smoothing gaze prediction
+    // Fixed line for smoothingFactor, it's now correctly written
     let smoothedX = window.innerWidth / 2;
     let smoothedY = window.innerHeight / 2;
-    const smoothingFactor = 0.2; // Corrected the typo here
+    const smoothingFactor = 0.2; // Corrected typo in the variable name
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
