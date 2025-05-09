@@ -182,6 +182,9 @@
       // Update the gaze dot's position
       gazeDot.style.left = `${smoothedX}px`;
       gazeDot.style.top = `${smoothedY}px`;
+
+      // Debugging text to track gaze dot position
+      debug.textContent = `Gaze dot at: ${smoothedX.toFixed(2)}, ${smoothedY.toFixed(2)}`;
     }
 
     setupCalibrationPoints();
