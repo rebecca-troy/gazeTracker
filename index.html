@@ -2,15 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Accurate Eye Tracker (Step 1)</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <title>Gaze Tracker Calibration</title>
   <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
     video, canvas {
       position: absolute;
       top: 0;
       left: 0;
-      transform: scaleX(-1); /* mirror webcam */
+      transform: scaleX(-1);
     }
     #debug {
       position: absolute;
@@ -22,18 +25,40 @@
       font-family: sans-serif;
       z-index: 10;
     }
+    .calibration-dot {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: red;
+      border-radius: 50%;
+      z-index: 100;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
-  <video class="input_video" autoplay muted playsinline></video>
+  <video class="input_video" autoplay playsinline></video>
   <canvas class="output_canvas"></canvas>
   <div id="debug">Initializing...</div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+
   <script>
+    window.onerror = function (msg, url, line, col, error) {
+      document.body.innerHTML = `<pre style="color:red;">JS Error: ${msg} at ${line}:${col}\n${error?.stack}</pre>`;
+    };
+
     const video = document.querySelector('.input_video');
     const canvas = document.querySelector('.output_canvas');
     const ctx = canvas.getContext('2d');
     const debug = document.getElementById('debug');
+
+    const dot = document.createElement('div');
+    dot.className = 'calibration-dot';
+    document.body.appendChild(dot);
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
@@ -55,11 +80,64 @@
     });
     camera.start();
 
+    // Calibration grid
+    const gridPoints = [];
+    const rows = 4, cols = 4;
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        const x = (c / (cols + 1)) * window.innerWidth;
+        const y = (r / (rows + 1)) * window.innerHeight;
+        gridPoints.push({ x, y });
+      }
+    }
+
+    let currentPoint = 0;
+    let samples = [];
+    let modelReady = false;
+    let regressionX = null, regressionY = null;
+
+    function getFeatures(iris, left, right, top, bottom, nose) {
+      const eyeWidth = right.x - left.x;
+      const eyeHeight = bottom.y - top.y;
+      if (eyeWidth === 0 || eyeHeight === 0) return null;
+
+      const irisOffsetX = (iris.x - left.x) / eyeWidth;
+      const irisOffsetY = (iris.y - top.y) / eyeHeight;
+      return [irisOffsetX, irisOffsetY, nose.x, nose.y];
+    }
+
     function drawLandmark(pt, color = 'cyan', size = 4) {
       ctx.beginPath();
       ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
       ctx.fillStyle = color;
       ctx.fill();
+    }
+
+    function drawGazeDot(x, y) {
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, 2 * Math.PI);
+      ctx.fillStyle = 'lime';
+      ctx.fill();
+    }
+
+    function trainModel() {
+      function fitRidge(samples, key) {
+        const X = samples.map(s => s.features);
+        const Y = samples.map(s => s[key]);
+        const lambda = 1;
+
+        const Xt = math.transpose(X);
+        const XtX = math.add(math.multiply(Xt, X), math.multiply(lambda, math.identity(Xt[0].length)));
+        const XtY = math.multiply(Xt, Y);
+        const coeffs = math.lusolve(XtX, XtY).flat();
+
+        return {
+          predict: (f) => math.dot(coeffs, f)
+        };
+      }
+
+      regressionX = fitRidge(samples, 'x');
+      regressionY = fitRidge(samples, 'y');
     }
 
     function onResults(results) {
@@ -74,21 +152,54 @@
       }
 
       const lm = results.multiFaceLandmarks[0];
-      const iris = lm[468]; // center of left eye
-      const leftCorner = lm[33];
-      const rightCorner = lm[133];
-      const topLid = lm[159];
-      const bottomLid = lm[145];
-      const nose = lm[1]; // head stabilization ref
+      const iris = lm[468];
+      const left = lm[33];
+      const right = lm[133];
+      const top = lm[159];
+      const bottom = lm[145];
+      const nose = lm[1];
 
       drawLandmark(iris, 'red');
-      drawLandmark(leftCorner, 'blue');
-      drawLandmark(rightCorner, 'blue');
-      drawLandmark(topLid, 'green');
-      drawLandmark(bottomLid, 'green');
-      drawLandmark(nose, 'yellow');
 
-      debug.textContent = `Tracking iris. Nose (${nose.x.toFixed(3)}, ${nose.y.toFixed(3)})`;
+      if (modelReady) {
+        const features = getFeatures(iris, left, right, top, bottom, nose);
+        if (!features) return;
+
+        const rawX = regressionX.predict(features);
+        const rawY = regressionY.predict(features);
+
+        // Exponential smoothing
+        if (!window.filteredGaze)
+          window.filteredGaze = { x: rawX, y: rawY };
+
+        const alpha = 0.2;
+        window.filteredGaze.x = alpha * rawX + (1 - alpha) * window.filteredGaze.x;
+        window.filteredGaze.y = alpha * rawY + (1 - alpha) * window.filteredGaze.y;
+
+        drawGazeDot(window.filteredGaze.x, window.filteredGaze.y);
+        debug.textContent = `Tracking (x: ${Math.round(window.filteredGaze.x)}, y: ${Math.round(window.filteredGaze.y)})`;
+      } else {
+        const point = gridPoints[currentPoint];
+        dot.style.left = `${point.x}px`;
+        dot.style.top = `${point.y}px`;
+
+        const features = getFeatures(iris, left, right, top, bottom, nose);
+        if (features) {
+          samples.push({ features, x: point.x, y: point.y });
+        }
+
+        if (samples.length % 30 === 0) {
+          currentPoint++;
+          if (currentPoint >= gridPoints.length) {
+            trainModel();
+            modelReady = true;
+            dot.remove();
+            debug.textContent = "✅ Calibration complete. Tracking live.";
+          }
+        } else {
+          debug.textContent = `Calibrating... (${samples.length} samples)`;
+        }
+      }
     }
   </script>
 </body>
