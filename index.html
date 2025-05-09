@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Improved Gaze Tracker</title>
+  <title>Improved Gaze Tracker with Smoothing</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <style>
@@ -11,6 +11,7 @@
       top: 0;
       left: 0;
       transform: scaleX(-1); /* mirror webcam */
+      z-index: 1;
     }
     #gaze-dot {
       position: absolute;
@@ -20,7 +21,7 @@
       border-radius: 50%;
       transform: translate(-50%, -50%);
       pointer-events: none;
-      z-index: 100;
+      z-index: 100; /* Ensure it's on top */
     }
     #debug {
       position: absolute;
@@ -51,6 +52,11 @@
     let calibrationPoints = [];
     let currentPointIndex = 0;
     let sampleData = [];
+
+    // Variables for smoothing gaze prediction
+    let smoothedX = window.innerWidth / 2;
+    let smoothedY = window.innerHeight / 2;
+    const smoothingFactor = 0.2; // Adjust this factor for more/less smoothing
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
@@ -169,8 +175,13 @@
     }
 
     function drawGazeDot(x, y) {
-      gazeDot.style.left = `${x}px`;
-      gazeDot.style.top = `${y}px`;
+      // Apply smoothing to the gaze point
+      smoothedX = smoothedX * (1 - smoothingFactor) + x * smoothingFactor;
+      smoothedY = smoothedY * (1 - smoothingFactor) + y * smoothingFactor;
+
+      // Update the gaze dot's position
+      gazeDot.style.left = `${smoothedX}px`;
+      gazeDot.style.top = `${smoothedY}px`;
     }
 
     setupCalibrationPoints();
