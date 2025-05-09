@@ -11,7 +11,6 @@
       top: 0;
       left: 0;
       transform: scaleX(-1); /* mirror webcam */
-      z-index: 1;
     }
     #gaze-dot {
       position: absolute;
@@ -52,11 +51,9 @@
     let calibrationPoints = [];
     let currentPointIndex = 0;
     let sampleData = [];
-
-    // Fixed line for smoothingFactor, it's now correctly written
     let smoothedX = window.innerWidth / 2;
     let smoothedY = window.innerHeight / 2;
-    const smoothingFactor = 0.2; // Corrected typo in the variable name
+    const smoothingFactor = 0.2; // Smoothing factor for gaze
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
@@ -98,96 +95,3 @@
     function drawLandmark(pt, color = 'cyan', size = 4) {
       ctx.beginPath();
       ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    function onResults(results) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-      if (!results.multiFaceLandmarks.length) {
-        debug.textContent = 'No face detected';
-        return;
-      }
-
-      const landmarks = results.multiFaceLandmarks[0];
-
-      const iris = landmarks[468]; // left eye center
-      const nose = landmarks[1]; // nose position
-
-      drawLandmark(iris, 'red');
-      drawLandmark(nose, 'yellow');
-
-      // Calibration phase: Collecting gaze data
-      if (!modelReady) {
-        const point = calibrationPoints[currentPointIndex];
-        gazeDot.style.left = `${point.x}px`;
-        gazeDot.style.top = `${point.y}px`;
-
-        const features = extractFeatures(iris, nose);
-        sampleData.push({ features, target: point });
-
-        // When we reach 30 samples for a calibration point, move to the next point
-        if (sampleData.length % 30 === 0) {
-          currentPointIndex++;
-          if (currentPointIndex >= calibrationPoints.length) {
-            trainModel();
-            modelReady = true;
-            gazeDot.remove();
-            debug.textContent = "✅ Calibration complete. Tracking gaze...";
-          }
-        } else {
-          debug.textContent = `Calibrating... (${sampleData.length} samples collected)`;
-        }
-      } else {
-        // Predict gaze location after calibration
-        const features = extractFeatures(iris, nose);
-        const predictedPoint = predictGaze(features);
-        drawGazeDot(predictedPoint.x, predictedPoint.y);
-      }
-    }
-
-    function extractFeatures(iris, nose) {
-      return [
-        iris.x - nose.x, // difference in X axis between iris and nose
-        iris.y - nose.y  // difference in Y axis between iris and nose
-      ];
-    }
-
-    function predictGaze(features) {
-      // A simple nearest-neighbor-like prediction for demonstration
-      const minDist = Math.min(...sampleData.map(d => {
-        return Math.sqrt(Math.pow(d.features[0] - features[0], 2) + Math.pow(d.features[1] - features[1], 2));
-      }));
-      const bestMatch = sampleData.find(d => {
-        const dist = Math.sqrt(Math.pow(d.features[0] - features[0], 2) + Math.pow(d.features[1] - features[1], 2));
-        return dist === minDist;
-      });
-      return bestMatch.target || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    }
-
-    function trainModel() {
-      // Model is trained by mapping the iris-nose features to screen coordinates (gaze points)
-      debug.textContent = "Training gaze model...";
-    }
-
-    function drawGazeDot(x, y) {
-      // Apply smoothing to the gaze point
-      smoothedX = smoothedX * (1 - smoothingFactor) + x * smoothingFactor;
-      smoothedY = smoothedY * (1 - smoothingFactor) + y * smoothingFactor;
-
-      // Update the gaze dot's position
-      gazeDot.style.left = `${smoothedX}px`;
-      gazeDot.style.top = `${smoothedY}px`;
-
-      // Debugging text to track gaze dot position
-      debug.textContent = `Gaze dot at: ${smoothedX.toFixed(2)}, ${smoothedY.toFixed(2)}`;
-    }
-
-    setupCalibrationPoints();
-  </script>
-</body>
-</html>
