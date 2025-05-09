@@ -13,13 +13,14 @@
     }
     #gaze-dot {
       position: absolute;
-      width: 20px;
-      height: 20px;
-      background: red;
+      width: 12px;
+      height: 12px;
+      background: rgba(255, 0, 0, 0.6);
       border-radius: 50%;
       transform: translate(-50%, -50%);
       pointer-events: none;
       z-index: 10;
+      transition: left 0.05s linear, top 0.05s linear;
     }
     .calibration-point {
       position: absolute;
@@ -40,19 +41,32 @@
       padding: 10px 15px;
       z-index: 200;
     }
+    #recalibrate {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #333;
+      color: white;
+      padding: 10px 15px;
+      cursor: pointer;
+      z-index: 200;
+    }
   </style>
 </head>
 <body>
   <div id="status">Loading camera...</div>
+  <div id="recalibrate">🔄 Recalibrate</div>
   <div id="gaze-dot"></div>
 
   <script>
     const dot = document.getElementById('gaze-dot');
     const status = document.getElementById('status');
+    const recalibrateBtn = document.getElementById('recalibrate');
     const calibrationClicksRequired = 5;
     const clickCounts = {};
     let calibrationIndex = 0;
-    const recentPoints = [];
+    let smoothed = { x: null, y: null };
+    const smoothingFactor = 0.15;
 
     function createCalibrationPointAt(x, y, index) {
       const point = document.createElement('div');
@@ -71,7 +85,10 @@
           point.remove();
           calibrationIndex++;
           if (calibrationIndex >= 9) {
-            status.textContent = "✅ Calibration complete. Gaze tracking active.";
+            status.textContent = "✅ Calibration complete. Stabilizing...";
+            setTimeout(() => {
+              status.textContent = "✅ Gaze tracking active.";
+            }, 2000);
           }
         }
       });
@@ -80,6 +97,12 @@
     }
 
     function placeCalibrationGrid() {
+      calibrationIndex = 0;
+      Object.keys(clickCounts).forEach(key => delete clickCounts[key]);
+
+      const existing = document.querySelectorAll('.calibration-point');
+      existing.forEach(p => p.remove());
+
       const gridRows = 3;
       const gridCols = 3;
       const spacingX = window.innerWidth / (gridCols + 1);
@@ -104,26 +127,23 @@
                       .setGazeListener((data) => {
                         if (!data) return;
 
-                        recentPoints.push(data);
-                        if (recentPoints.length > 10) recentPoints.shift();
+                        if (smoothed.x === null || smoothed.y === null) {
+                          smoothed.x = data.x;
+                          smoothed.y = data.y;
+                        } else {
+                          smoothed.x += (data.x - smoothed.x) * smoothingFactor;
+                          smoothed.y += (data.y - smoothed.y) * smoothingFactor;
+                        }
 
-                        const avg = recentPoints.reduce((acc, pt) => {
-                          acc.x += pt.x;
-                          acc.y += pt.y;
-                          return acc;
-                        }, { x: 0, y: 0 });
-
-                        const avgX = avg.x / recentPoints.length;
-                        const avgY = avg.y / recentPoints.length;
-
-                        dot.style.left = `${avgX}px`;
-                        dot.style.top = `${avgY}px`;
+                        dot.style.left = `${smoothed.x}px`;
+                        dot.style.top = `${smoothed.y}px`;
                       })
                       .begin();
 
-        webgazer.showVideo(false)
+        webgazer.showVideo(true)
                 .showPredictionPoints(false)
-                .showFaceOverlay(false);
+                .showFaceOverlay(false)
+                .saveDataAcrossSessions(true);
 
         setTimeout(() => {
           status.textContent = "Click each blue dot 5 times to calibrate.";
@@ -137,6 +157,11 @@
     }
 
     startWebGazer();
+
+    recalibrateBtn.addEventListener('click', () => {
+      status.textContent = "🔄 Recalibration started. Click blue dots.";
+      placeCalibrationGrid();
+    });
 
     window.addEventListener('beforeunload', () => {
       webgazer.end();
