@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Accurate Eye Tracker (Step 1)</title>
+  <title>Improved Gaze Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <style>
@@ -11,16 +11,6 @@
       top: 0;
       left: 0;
       transform: scaleX(-1); /* mirror webcam */
-    }
-    #debug {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      padding: 10px;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      z-index: 10;
     }
     #gaze-dot {
       position: absolute;
@@ -31,6 +21,16 @@
       transform: translate(-50%, -50%);
       pointer-events: none;
       z-index: 100;
+    }
+    #debug {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 10px;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      z-index: 10;
     }
   </style>
 </head>
@@ -48,9 +48,9 @@
     const gazeDot = document.getElementById('gaze-dot');
 
     let modelReady = false;
-    let gridPoints = [];
-    let currentPoint = 0;
-    let samples = [];
+    let calibrationPoints = [];
+    let currentPointIndex = 0;
+    let sampleData = [];
 
     const faceMesh = new FaceMesh({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
@@ -72,207 +72,22 @@
     });
     camera.start();
 
-    function drawLandmark(pt, color = 'cyan', size = 4) {
-      ctx.beginPath();
-      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    function onResults(results) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-      if (!results.multiFaceLandmarks.length) {
-        debug.textContent = 'No face detected';
-        return;
-      }
-
-      const lm = results.multiFaceLandmarks[0];
-      const iris = lm[468];  // center of left eye
-      const leftCorner = lm[33];
-      const rightCorner = lm[133];
-      const topLid = lm[159];
-      const bottomLid = lm[145];
-      const nose = lm[1];  // head stabilization reference
-
-      drawLandmark(iris, 'red');
-      drawLandmark(leftCorner, 'blue');
-      drawLandmark(rightCorner, 'blue');
-      drawLandmark(topLid, 'green');
-      drawLandmark(bottomLid, 'green');
-      drawLandmark(nose, 'yellow');
-
-      if (modelReady) {
-        const features = getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose);
-        if (!features) return;
-
-        const rawX = regressionX.predict(features);
-        const rawY = regressionY.predict(features);
-
-        // Exponential smoothing
-        if (!window.filteredGaze) window.filteredGaze = { x: rawX, y: rawY };
-
-        const alpha = 0.2;
-        window.filteredGaze.x = alpha * rawX + (1 - alpha) * window.filteredGaze.x;
-        window.filteredGaze.y = alpha * rawY + (1 - alpha) * window.filteredGaze.y;
-
-        drawGazeDot(window.filteredGaze.x, window.filteredGaze.y);
-        debug.textContent = `Tracking (x: ${Math.round(window.filteredGaze.x)}, y: ${Math.round(window.filteredGaze.y)})`;
-      } else {
-        debug.textContent = `Calibrating... Current Point ${currentPoint + 1} of ${gridPoints.length}`;
-        const point = gridPoints[currentPoint];
-        gazeDot.style.left = `${point.x}px`;
-        gazeDot.style.top = `${point.y}px`;
-
-        const features = getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose);
-        if (features) {
-          samples.push({ features, x: point.x, y: point.y });
-        }
-
-        if (samples.length % 30 === 0) {
-          currentPoint++;
-          if (currentPoint >= gridPoints.length) {
-            trainModel();
-            modelReady = true;
-            gazeDot.remove();
-            debug.textContent = "✅ Calibration complete. Tracking live.";
-          }
-        } else {
-          debug.textContent = `Calibrating... (${samples.length} samples)`;
-        }
-      }
-    }
-
-    function trainModel() {
-      regressionX = trainRegression(samples.map(s => s.features), samples.map(s => s.x));
-      regressionY = trainRegression(samples.map(s => s.features), samples.map(s => s.y));
-    }
-
-    function trainRegression(features, targets) {
-      const n = features.length;
-      const X = math.matrix(features);
-      const y = math.matrix(targets).transpose();
-      const Xt = math.transpose(X);
-      const XtX = math.multiply(Xt, X);
-      const XtXInv = math.inv(XtX);
-      const XtY = math.multiply(Xt, y);
-      const theta = math.multiply(XtXInv, XtY);
-      return { predict: (x) => math.dotMultiply(x, theta).reduce((sum, val) => sum + val, 0) };
-    }
-
-    function drawGazeDot(x, y) {
-      gazeDot.style.left = `${x}px`;
-      gazeDot.style.top = `${y}px`;
-    }
-
-    function getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose) {
-      return [
-        iris.x - leftCorner.x, iris.y - leftCorner.y,  // iris to left corner
-        rightCorner.x - iris.x, rightCorner.y - iris.y,  // iris to right corner
-        topLid.x - iris.x, topLid.y - iris.y,  // iris to top lid
-        bottomLid.x - iris.x, bottomLid.y - iris.y,  // iris to bottom lid
-        nose.x - iris.x, nose.y - iris.y  // iris to nose
-      ];
-    }
-
-    function setupGrid() {
+    // Define the positions of calibration points
+    function setupCalibrationPoints() {
       const rows = 3;
       const cols = 3;
       const spacingX = window.innerWidth / (cols + 1);
       const spacingY = window.innerHeight / (rows + 1);
 
-      gridPoints = [];
+      calibrationPoints = [];
       for (let row = 1; row <= rows; row++) {
         for (let col = 1; col <= cols; col++) {
           const x = spacingX * col;
           const y = spacingY * row;
-          gridPoints.push({ x, y });
+          calibrationPoints.push({ x, y });
         }
       }
-
-      debug.textContent = `Calibration points set. Starting calibration...`;
     }
-
-    setupGrid();
-  </script>
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Accurate Eye Tracker (Step 1)</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <style>
-    video, canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      transform: scaleX(-1); /* mirror webcam */
-    }
-    #debug {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      padding: 10px;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      z-index: 10;
-    }
-    #gaze-dot {
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      background: red;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      z-index: 100;
-    }
-  </style>
-</head>
-<body>
-  <video class="input_video" autoplay muted playsinline></video>
-  <canvas class="output_canvas"></canvas>
-  <div id="debug">Initializing...</div>
-  <div id="gaze-dot"></div>
-
-  <script>
-    const video = document.querySelector('.input_video');
-    const canvas = document.querySelector('.output_canvas');
-    const ctx = canvas.getContext('2d');
-    const debug = document.getElementById('debug');
-    const gazeDot = document.getElementById('gaze-dot');
-
-    let modelReady = false;
-    let gridPoints = [];
-    let currentPoint = 0;
-    let samples = [];
-
-    const faceMesh = new FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
-    });
-
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
-    });
-
-    faceMesh.onResults(onResults);
-
-    const camera = new Camera(video, {
-      onFrame: async () => await faceMesh.send({ image: video }),
-      width: 640,
-      height: 480
-    });
-    camera.start();
 
     function drawLandmark(pt, color = 'cyan', size = 4) {
       ctx.beginPath();
@@ -292,77 +107,65 @@
         return;
       }
 
-      const lm = results.multiFaceLandmarks[0];
-      const iris = lm[468];  // center of left eye
-      const leftCorner = lm[33];
-      const rightCorner = lm[133];
-      const topLid = lm[159];
-      const bottomLid = lm[145];
-      const nose = lm[1];  // head stabilization reference
+      const landmarks = results.multiFaceLandmarks[0];
+
+      const iris = landmarks[468]; // left eye center
+      const nose = landmarks[1]; // nose position
 
       drawLandmark(iris, 'red');
-      drawLandmark(leftCorner, 'blue');
-      drawLandmark(rightCorner, 'blue');
-      drawLandmark(topLid, 'green');
-      drawLandmark(bottomLid, 'green');
       drawLandmark(nose, 'yellow');
 
-      if (modelReady) {
-        const features = getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose);
-        if (!features) return;
-
-        const rawX = regressionX.predict(features);
-        const rawY = regressionY.predict(features);
-
-        // Exponential smoothing
-        if (!window.filteredGaze) window.filteredGaze = { x: rawX, y: rawY };
-
-        const alpha = 0.2;
-        window.filteredGaze.x = alpha * rawX + (1 - alpha) * window.filteredGaze.x;
-        window.filteredGaze.y = alpha * rawY + (1 - alpha) * window.filteredGaze.y;
-
-        drawGazeDot(window.filteredGaze.x, window.filteredGaze.y);
-        debug.textContent = `Tracking (x: ${Math.round(window.filteredGaze.x)}, y: ${Math.round(window.filteredGaze.y)})`;
-      } else {
-        debug.textContent = `Calibrating... Current Point ${currentPoint + 1} of ${gridPoints.length}`;
-        const point = gridPoints[currentPoint];
+      // Calibration phase: Collecting gaze data
+      if (!modelReady) {
+        const point = calibrationPoints[currentPointIndex];
         gazeDot.style.left = `${point.x}px`;
         gazeDot.style.top = `${point.y}px`;
 
-        const features = getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose);
-        if (features) {
-          samples.push({ features, x: point.x, y: point.y });
-        }
+        const features = extractFeatures(iris, nose);
+        sampleData.push({ features, target: point });
 
-        if (samples.length % 30 === 0) {
-          currentPoint++;
-          if (currentPoint >= gridPoints.length) {
+        // When we reach 30 samples for a calibration point, move to the next point
+        if (sampleData.length % 30 === 0) {
+          currentPointIndex++;
+          if (currentPointIndex >= calibrationPoints.length) {
             trainModel();
             modelReady = true;
             gazeDot.remove();
-            debug.textContent = "✅ Calibration complete. Tracking live.";
+            debug.textContent = "✅ Calibration complete. Tracking gaze...";
           }
         } else {
-          debug.textContent = `Calibrating... (${samples.length} samples)`;
+          debug.textContent = `Calibrating... (${sampleData.length} samples collected)`;
         }
+      } else {
+        // Predict gaze location after calibration
+        const features = extractFeatures(iris, nose);
+        const predictedPoint = predictGaze(features);
+        drawGazeDot(predictedPoint.x, predictedPoint.y);
       }
     }
 
-    function trainModel() {
-      regressionX = trainRegression(samples.map(s => s.features), samples.map(s => s.x));
-      regressionY = trainRegression(samples.map(s => s.features), samples.map(s => s.y));
+    function extractFeatures(iris, nose) {
+      return [
+        iris.x - nose.x, // difference in X axis between iris and nose
+        iris.y - nose.y  // difference in Y axis between iris and nose
+      ];
     }
 
-    function trainRegression(features, targets) {
-      const n = features.length;
-      const X = math.matrix(features);
-      const y = math.matrix(targets).transpose();
-      const Xt = math.transpose(X);
-      const XtX = math.multiply(Xt, X);
-      const XtXInv = math.inv(XtX);
-      const XtY = math.multiply(Xt, y);
-      const theta = math.multiply(XtXInv, XtY);
-      return { predict: (x) => math.dotMultiply(x, theta).reduce((sum, val) => sum + val, 0) };
+    function predictGaze(features) {
+      // A simple nearest-neighbor-like prediction for demonstration
+      const minDist = Math.min(...sampleData.map(d => {
+        return Math.sqrt(Math.pow(d.features[0] - features[0], 2) + Math.pow(d.features[1] - features[1], 2));
+      }));
+      const bestMatch = sampleData.find(d => {
+        const dist = Math.sqrt(Math.pow(d.features[0] - features[0], 2) + Math.pow(d.features[1] - features[1], 2));
+        return dist === minDist;
+      });
+      return bestMatch.target || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    }
+
+    function trainModel() {
+      // Model is trained by mapping the iris-nose features to screen coordinates (gaze points)
+      debug.textContent = "Training gaze model...";
     }
 
     function drawGazeDot(x, y) {
@@ -370,35 +173,7 @@
       gazeDot.style.top = `${y}px`;
     }
 
-    function getFeatures(iris, leftCorner, rightCorner, topLid, bottomLid, nose) {
-      return [
-        iris.x - leftCorner.x, iris.y - leftCorner.y,  // iris to left corner
-        rightCorner.x - iris.x, rightCorner.y - iris.y,  // iris to right corner
-        topLid.x - iris.x, topLid.y - iris.y,  // iris to top lid
-        bottomLid.x - iris.x, bottomLid.y - iris.y,  // iris to bottom lid
-        nose.x - iris.x, nose.y - iris.y  // iris to nose
-      ];
-    }
-
-    function setupGrid() {
-      const rows = 3;
-      const cols = 3;
-      const spacingX = window.innerWidth / (cols + 1);
-      const spacingY = window.innerHeight / (rows + 1);
-
-      gridPoints = [];
-      for (let row = 1; row <= rows; row++) {
-        for (let col = 1; col <= cols; col++) {
-          const x = spacingX * col;
-          const y = spacingY * row;
-          gridPoints.push({ x, y });
-        }
-      }
-
-      debug.textContent = `Calibration points set. Starting calibration...`;
-    }
-
-    setupGrid();
+    setupCalibrationPoints();
   </script>
 </body>
 </html>
