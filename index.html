@@ -1,171 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Improved Gaze Tracker</title>
-  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+  <meta charset="UTF-8" />
+  <title>Gaze Tracker with Dot</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <style>
-    body {
-      margin: 0;
-      font-family: sans-serif;
-      overflow: hidden;
-      background: #fafafa;
-    }
-    #gaze-dot {
+    video, canvas {
       position: absolute;
-      width: 12px;
-      height: 12px;
-      background: rgba(255, 0, 0, 0.6);
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      z-index: 10;
-      transition: left 0.05s linear, top 0.05s linear;
+      left: 0;
+      top: 0;
+      transform: scaleX(-1); /* Mirror for webcam */
     }
-    .calibration-point {
-      position: absolute;
-      width: 30px;
-      height: 30px;
-      background: blue;
-      border-radius: 50%;
-      opacity: 0.7;
-      cursor: pointer;
-      z-index: 100;
-    }
-    #status {
+    #direction {
       position: absolute;
       top: 10px;
       left: 10px;
       background: black;
       color: white;
-      padding: 10px 15px;
-      z-index: 200;
+      padding: 10px;
+      font-size: 18px;
+      z-index: 10;
     }
-    #recalibrate {
+    #gaze-dot {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: #333;
-      color: white;
-      padding: 10px 15px;
-      cursor: pointer;
-      z-index: 200;
+      width: 20px;
+      height: 20px;
+      background: red;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      z-index: 15;
     }
   </style>
 </head>
 <body>
-  <div id="status">Loading camera...</div>
-  <div id="recalibrate">🔄 Recalibrate</div>
+  <video class="input_video" autoplay muted playsinline></video>
+  <canvas class="output_canvas"></canvas>
+  <div id="direction">Looking: ...</div>
   <div id="gaze-dot"></div>
 
   <script>
-    const dot = document.getElementById('gaze-dot');
-    const status = document.getElementById('status');
-    const recalibrateBtn = document.getElementById('recalibrate');
-    const calibrationClicksRequired = 5;
-    const clickCounts = {};
-    let calibrationIndex = 0;
-    let smoothed = { x: null, y: null };
-    const smoothingFactor = 0.15;
+    const video = document.querySelector('.input_video');
+    const canvas = document.querySelector('.output_canvas');
+    const ctx = canvas.getContext('2d');
+    const dirDisplay = document.getElementById('direction');
+    const gazeDot = document.getElementById('gaze-dot');
 
-    function createCalibrationPointAt(x, y, index) {
-      const point = document.createElement('div');
-      point.className = 'calibration-point';
-      point.style.left = `${x}px`;
-      point.style.top = `${y}px`;
-      point.dataset.index = index;
-      clickCounts[index] = 0;
-
-      point.addEventListener('click', () => {
-        webgazer.recordScreenPosition(x, y, 'click');
-        clickCounts[index]++;
-        point.style.opacity = `${0.7 * ((calibrationClicksRequired - clickCounts[index]) / calibrationClicksRequired)}`;
-
-        if (clickCounts[index] >= calibrationClicksRequired) {
-          point.remove();
-          calibrationIndex++;
-          if (calibrationIndex >= 9) {
-            status.textContent = "✅ Calibration complete. Stabilizing...";
-            setTimeout(() => {
-              status.textContent = "✅ Gaze tracking active.";
-            }, 2000);
-          }
-        }
-      });
-
-      document.body.appendChild(point);
-    }
-
-    function placeCalibrationGrid() {
-      calibrationIndex = 0;
-      Object.keys(clickCounts).forEach(key => delete clickCounts[key]);
-
-      const existing = document.querySelectorAll('.calibration-point');
-      existing.forEach(p => p.remove());
-
-      const gridRows = 3;
-      const gridCols = 3;
-      const spacingX = window.innerWidth / (gridCols + 1);
-      const spacingY = window.innerHeight / (gridRows + 1);
-
-      for (let row = 1; row <= gridRows; row++) {
-        for (let col = 1; col <= gridCols; col++) {
-          const x = spacingX * col;
-          const y = spacingY * row;
-          createCalibrationPointAt(x, y, (row - 1) * gridCols + (col - 1));
-        }
-      }
-    }
-
-    async function startWebGazer() {
-      try {
-        await navigator.mediaDevices.getUserMedia({ video: true });
-        status.textContent = "Starting WebGazer...";
-
-        await webgazer.setRegression('ridge')
-                      .setTracker('clmtrackr')
-                      .setGazeListener((data) => {
-                        if (!data) return;
-
-                        if (smoothed.x === null || smoothed.y === null) {
-                          smoothed.x = data.x;
-                          smoothed.y = data.y;
-                        } else {
-                          smoothed.x += (data.x - smoothed.x) * smoothingFactor;
-                          smoothed.y += (data.y - smoothed.y) * smoothingFactor;
-                        }
-
-                        dot.style.left = `${smoothed.x}px`;
-                        dot.style.top = `${smoothed.y}px`;
-                      })
-                      .begin();
-
-        webgazer.showVideo(true)
-                .showPredictionPoints(false)
-                .showFaceOverlay(false)
-                .saveDataAcrossSessions(true);
-
-        setTimeout(() => {
-          status.textContent = "Click each blue dot 5 times to calibrate.";
-          placeCalibrationGrid();
-        }, 1000);
-
-      } catch (err) {
-        status.textContent = "❌ Camera error: " + err.message;
-        console.error(err);
-      }
-    }
-
-    startWebGazer();
-
-    recalibrateBtn.addEventListener('click', () => {
-      status.textContent = "🔄 Recalibration started. Click blue dots.";
-      placeCalibrationGrid();
+    const faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
     });
 
-    window.addEventListener('beforeunload', () => {
-      webgazer.end();
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
     });
+
+    faceMesh.onResults(onResults);
+
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await faceMesh.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+
+    function onResults(results) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+      if (results.multiFaceLandmarks.length === 0) return;
+
+      const lm = results.multiFaceLandmarks[0];
+
+      // Left eye landmarks
+      const iris = lm[468];
+      const left = lm[33];
+      const right = lm[133];
+      const top = lm[159];
+      const bottom = lm[145];
+
+      const eyeWidth = right.x - left.x;
+      const eyeHeight = bottom.y - top.y;
+
+      const xNorm = (iris.x - left.x) / eyeWidth;
+      const yNorm = (iris.y - top.y) / eyeHeight;
+
+      // Direction interpretation
+      let hDir = "Center", vDir = "Center";
+      if (xNorm < 0.35) hDir = "Left";
+      else if (xNorm > 0.65) hDir = "Right";
+
+      if (yNorm < 0.35) vDir = "Up";
+      else if (yNorm > 0.65) vDir = "Down";
+
+      dirDisplay.textContent = `Looking: ${vDir}-${hDir}`;
+
+      // Map to screen coords
+      const screenX = canvas.width * xNorm;
+      const screenY = canvas.height * yNorm;
+      gazeDot.style.left = `${screenX}px`;
+      gazeDot.style.top = `${screenY}px`;
+    }
   </script>
 </body>
 </html>
