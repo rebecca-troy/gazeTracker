@@ -177,7 +177,7 @@
     function drawGazeDot(x, y) {
       // Apply smoothing to the gaze point
       smoothedX = smoothedX * (1 - smoothingFactor) + x * smoothingFactor;
-      smoothedY = smoothedY * (1 - smoothingFactor) + y * smoothingFactor;
+      smoothedY = smoothedY * (1 - smoothing Factor) + y * smoothingFactor;
 
       // Update the gaze dot's position
       gazeDot.style.left = `${smoothedX}px`;
