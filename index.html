@@ -10,7 +10,7 @@
       position: absolute;
       top: 0;
       left: 0;
-      transform: scaleX(-1); /* mirror webcam */
+      transform: scaleX(-1);
     }
     #gaze-dot {
       position: absolute;
@@ -20,7 +20,7 @@
       border-radius: 50%;
       transform: translate(-50%, -50%);
       pointer-events: none;
-      z-index: 100; /* Ensure it's on top */
+      z-index: 100;
     }
     #debug {
       position: absolute;
@@ -41,57 +41,69 @@
   <div id="gaze-dot"></div>
 
   <script>
-    const video = document.querySelector('.input_video');
-    const canvas = document.querySelector('.output_canvas');
-    const ctx = canvas.getContext('2d');
-    const debug = document.getElementById('debug');
-    const gazeDot = document.getElementById('gaze-dot');
+    window.onload = () => {
+      const video = document.querySelector('.input_video');
+      const canvas = document.querySelector('.output_canvas');
+      const ctx = canvas.getContext('2d');
+      const debug = document.getElementById('debug');
+      const gazeDot = document.getElementById('gaze-dot');
 
-    let modelReady = false;
-    let calibrationPoints = [];
-    let currentPointIndex = 0;
-    let sampleData = [];
-    let smoothedX = window.innerWidth / 2;
-    let smoothedY = window.innerHeight / 2;
-    const smoothingFactor = 0.2; // Smoothing factor for gaze
+      canvas.width = 640;
+      canvas.height = 480;
 
-    const faceMesh = new FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
-    });
+      const faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
+      });
 
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
-    });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.6,
+        minTrackingConfidence: 0.6
+      });
 
-    faceMesh.onResults(onResults);
+      faceMesh.onResults(onResults);
 
-    const camera = new Camera(video, {
-      onFrame: async () => await faceMesh.send({ image: video }),
-      width: 640,
-      height: 480
-    });
-    camera.start();
+      const camera = new Camera(video, {
+        onFrame: async () => {
+          await faceMesh.send({ image: video });
+        },
+        width: 640,
+        height: 480
+      });
+      camera.start();
 
-    // Define the positions of calibration points
-    function setupCalibrationPoints() {
-      const rows = 3;
-      const cols = 3;
-      const spacingX = window.innerWidth / (cols + 1);
-      const spacingY = window.innerHeight / (rows + 1);
+      function onResults(results) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        debug.textContent = "Tracking face...";
 
-      calibrationPoints = [];
-      for (let row = 1; row <= rows; row++) {
-        for (let col = 1; col <= cols; col++) {
-          const x = spacingX * col;
-          const y = spacingY * row;
-          calibrationPoints.push({ x, y });
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+          const landmarks = results.multiFaceLandmarks[0];
+
+          for (const point of landmarks) {
+            drawLandmark(point);
+          }
+
+          // Example: estimate the gaze center between two eye points
+          const leftEye = landmarks[33];  // outer left eye
+          const rightEye = landmarks[263]; // outer right eye
+          const gazeX = (leftEye.x + rightEye.x) / 2 * window.innerWidth;
+          const gazeY = (leftEye.y + rightEye.y) / 2 * window.innerHeight;
+
+          gazeDot.style.left = `${gazeX}px`;
+          gazeDot.style.top = `${gazeY}px`;
+        } else {
+          debug.textContent = "Face not detected.";
         }
       }
-    }
 
-    function drawLandmark(pt, color = 'cyan', size = 4) {
-      ctx.beginPath();
-      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
+      function drawLandmark(pt, color = 'cyan', size = 2) {
+        ctx.beginPath();
+        ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+    };
+  </script>
+</body>
+</html>
