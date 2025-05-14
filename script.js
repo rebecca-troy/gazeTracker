@@ -1,44 +1,28 @@
 let gazeData = [];
 
-window.onload = async function () {
-    webgazer.setRegression("ridge") // choose regression
+window.onload = function () {
+    webgazer.setRegression("ridge")
         .setGazeListener((data, elapsedTime) => {
-            if (data == null) return;
-
-            gazeData.push({
-                x: data.x,
-                y: data.y,
-                t: elapsedTime
-            });
+            if (!data) return;
+            gazeData.push({ x: data.x, y: data.y, t: elapsedTime });
         })
         .begin();
 
-    // Optionally hide the video and face overlay
     webgazer.showVideo(false).showFaceOverlay(false).showFaceFeedbackBox(false);
 
-    // Stop after N seconds (e.g. 15 seconds)
+    // Stop tracking and send data after 15 seconds
     setTimeout(() => {
-        webgazer.end(); // Stop tracking
+        webgazer.end();
         sendData();
     }, 15000);
 };
 
 function sendData() {
-    fetch("/save", {
+    fetch("https://your-replit-url/save", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(gazeData),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(gazeData)
     })
-        .then(res => {
-            if (res.ok) {
-                alert("Data saved successfully.");
-            } else {
-                alert("Data failed to save.");
-            }
-        })
-        .catch(err => {
-            console.error("Error saving data:", err);
-        });
+    .then(res => alert(res.ok ? "Data saved!" : "Save failed."))
+    .catch(err => console.error("Error sending gaze data:", err));
 }
