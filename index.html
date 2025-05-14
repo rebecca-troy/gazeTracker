@@ -1,109 +1,41 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Improved Gaze Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <style>
-    video, canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      transform: scaleX(-1);
+function onResults(results) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  debug.textContent = "Tracking face...";
+
+  if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+    const landmarks = results.multiFaceLandmarks[0];
+
+    for (const point of landmarks) {
+      drawLandmark(point);
     }
-    #gaze-dot {
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      background: red;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      z-index: 100;
-    }
-    #debug {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      padding: 10px;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      z-index: 10;
-    }
-  </style>
-</head>
-<body>
-  <video class="input_video" autoplay muted playsinline></video>
-  <canvas class="output_canvas"></canvas>
-  <div id="debug">Initializing...</div>
-  <div id="gaze-dot"></div>
 
-  <script>
-    window.onload = () => {
-      const video = document.querySelector('.input_video');
-      const canvas = document.querySelector('.output_canvas');
-      const ctx = canvas.getContext('2d');
-      const debug = document.getElementById('debug');
-      const gazeDot = document.getElementById('gaze-dot');
+    // Calculate left iris center
+    const leftIris = averageLandmarks(landmarks.slice(473, 478));
+    const irisX = leftIris.x * window.innerWidth;
+    const irisY = leftIris.y * window.innerHeight;
 
-      canvas.width = 640;
-      canvas.height = 480;
+    // Move the gaze dot to the iris center
+    gazeDot.style.left = `${irisX}px`;
+    gazeDot.style.top = `${irisY}px`;
+  } else {
+    debug.textContent = "Face not detected.";
+  }
+}
 
-      const faceMesh = new FaceMesh({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`
-      });
-
-      faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.6,
-        minTrackingConfidence: 0.6
-      });
-
-      faceMesh.onResults(onResults);
-
-      const camera = new Camera(video, {
-        onFrame: async () => {
-          await faceMesh.send({ image: video });
-        },
-        width: 640,
-        height: 480
-      });
-      camera.start();
-
-      function onResults(results) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        debug.textContent = "Tracking face...";
-
-        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-          const landmarks = results.multiFaceLandmarks[0];
-
-          for (const point of landmarks) {
-            drawLandmark(point);
-          }
-
-          // Example: estimate the gaze center between two eye points
-          const leftEye = landmarks[33];  // outer left eye
-          const rightEye = landmarks[263]; // outer right eye
-          const gazeX = (leftEye.x + rightEye.x) / 2 * window.innerWidth;
-          const gazeY = (leftEye.y + rightEye.y) / 2 * window.innerHeight;
-
-          gazeDot.style.left = `${gazeX}px`;
-          gazeDot.style.top = `${gazeY}px`;
-        } else {
-          debug.textContent = "Face not detected.";
-        }
-      }
-
-      function drawLandmark(pt, color = 'cyan', size = 2) {
-        ctx.beginPath();
-        ctx.arc(pt.x * canvas.width, pt.y * canvas.height, size, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.fill();
-      }
+// Utility function to average landmark positions
+function averageLandmarks(landmarks) {
+  const sum = landmarks.reduce((acc, point) => {
+    return {
+      x: acc.x + point.x,
+      y: acc.y + point.y,
+      z: acc.z + point.z
     };
-  </script>
-</body>
-</html>
+  }, { x: 0, y: 0, z: 0 });
+
+  const count = landmarks.length;
+  return {
+    x: sum.x / count,
+    y: sum.y / count,
+    z: sum.z / count
+  };
+}
