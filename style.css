@@ -1,8 +1,11 @@
 body {
-    text-align: center;
-    font-family: sans-serif;
+  font-family: sans-serif;
+  text-align: center;
+  margin: 20px;
 }
-img {
-    width: 60%;
-    margin-top: 50px;
+
+#stimulus {
+  width: 80%;
+  max-width: 800px;
+  margin-top: 20px;
 }
