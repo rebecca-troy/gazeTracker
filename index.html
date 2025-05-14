@@ -1,16 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Gaze Tracking Study</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Eye Tracking Study</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Gaze Tracking Study</h1>
-  <p>Look at the image naturally as you would when reading.</p>
-  <img id="stimulus" src="your-image.jpg" alt="Stimulus" />
+  <h1>Eye Tracking Study</h1>
+  <p>Follow the instructions below to begin.</p>
 
+  <div id="calibration">
+    <p>Click on each red dot while looking at it to calibrate.</p>
+    <div id="dots">
+      <div class="cal-dot" style="top:10%; left:10%;"></div>
+      <div class="cal-dot" style="top:10%; left:50%;"></div>
+      <div class="cal-dot" style="top:10%; left:90%;"></div>
+      <div class="cal-dot" style="top:50%; left:10%;"></div>
+      <div class="cal-dot" style="top:50%; left:50%;"></div>
+      <div class="cal-dot" style="top:50%; left:90%;"></div>
+      <div class="cal-dot" style="top:90%; left:10%;"></div>
+      <div class="cal-dot" style="top:90%; left:50%;"></div>
+      <div class="cal-dot" style="top:90%; left:90%;"></div>
+    </div>
+  </div>
+
+  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
