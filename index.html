@@ -1,36 +1,46 @@
 function onResults(results) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  debug.textContent = "Tracking face...";
+  debug.textContent = "Tracking eyes...";
 
   if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
     const landmarks = results.multiFaceLandmarks[0];
 
-    for (const point of landmarks) {
-      drawLandmark(point);
-    }
+    // Landmarks for left eye
+    const leftEyeLeft = landmarks[33];   // left corner of left eye
+    const leftEyeRight = landmarks[133]; // right corner of left eye
+    const leftEyeTop = landmarks[159];   // top of left eye
+    const leftEyeBottom = landmarks[145];// bottom of left eye
+    const leftIris = averageLandmarks(landmarks.slice(473, 478)); // left iris
 
-    // Calculate left iris center
-    const leftIris = averageLandmarks(landmarks.slice(473, 478));
-    const irisX = leftIris.x * window.innerWidth;
-    const irisY = leftIris.y * window.innerHeight;
+    // Get relative x, y inside the eye bounding box
+    const eyeWidth = distance(leftEyeLeft, leftEyeRight);
+    const eyeHeight = distance(leftEyeTop, leftEyeBottom);
 
-    // Move the gaze dot to the iris center
-    gazeDot.style.left = `${irisX}px`;
-    gazeDot.style.top = `${irisY}px`;
+    const xRatio = (leftIris.x - leftEyeLeft.x) / (leftEyeRight.x - leftEyeLeft.x);
+    const yRatio = (leftIris.y - leftEyeTop.y) / (leftEyeBottom.y - leftEyeTop.y);
+
+    // Map these ratios to screen size
+    const gazeX = xRatio * window.innerWidth;
+    const gazeY = yRatio * window.innerHeight;
+
+    // Move gaze dot
+    gazeDot.style.left = `${gazeX}px`;
+    gazeDot.style.top = `${gazeY}px`;
   } else {
     debug.textContent = "Face not detected.";
   }
 }
 
-// Utility function to average landmark positions
+function distance(a, b) {
+  return Math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2);
+}
+
 function averageLandmarks(landmarks) {
-  const sum = landmarks.reduce((acc, point) => {
-    return {
-      x: acc.x + point.x,
-      y: acc.y + point.y,
-      z: acc.z + point.z
-    };
-  }, { x: 0, y: 0, z: 0 });
+  const sum = landmarks.reduce((acc, point) => ({
+    x: acc.x + point.x,
+    y: acc.y + point.y,
+    z: acc.z + point.z
+  }), { x: 0, y: 0, z: 0 });
 
   const count = landmarks.length;
   return {
